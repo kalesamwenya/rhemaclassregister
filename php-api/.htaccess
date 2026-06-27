@@ -1,0 +1,29 @@
+# File: api/.htaccess
+
+# 1. Turn on the Rewrite Engine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    Options -Indexes
+
+    # Remove .php extension from URLs
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [L]
+</IfModule>
+
+# 2. Protect Sensitive Files (Modern Apache 2.4 Syntax)
+# Block access to files starting with a dot (like .git, .env, .htaccess)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# 3. Protect Config Files
+# Prevent direct access to db.php via browser
+<FilesMatch "db.php">
+    Require all denied
+</FilesMatch>
+
+SetEnv PUSHER_APP_ID "2108925"
+SetEnv PUSHER_KEY "ec5569b7cb7fa46ecdb9"
+SetEnv PUSHER_SECRET "ad273fbcc2ee7f348eb2"
+SetEnv PUSHER_CLUSTER "ap1"

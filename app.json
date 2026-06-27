@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Rhema Class Register",
+    "slug": "rhemaclassregister",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "scheme": "rhemaclassregister",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "icon": "./assets/logo.png",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rhema.classregister",
+      "splash": {
+        "image": "./assets/logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "android": {
+      "package": "com.rhema.classregister",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "splash": {
+        "image": "./assets/logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/logo.png",
+          "imageWidth": 180
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9826d36a-5e96-4c3d-af78-ac1d5b0389e5"
+      }
+    }
+  }
+}
