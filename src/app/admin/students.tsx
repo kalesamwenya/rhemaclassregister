@@ -271,8 +271,8 @@ export default function AdminStudentsScreen() {
             studentsToImport.push({
               id: rawId,
               name: rawName,
-              cohort: det,
-              class: det,
+              cohort: sysConfig.cohorts[det] || String(det), // Convert numeric to cohort name string
+              class: det, // Keep numeric for API
             });
           }
         }
@@ -292,7 +292,20 @@ export default function AdminStudentsScreen() {
       schedule.forEach((slot) => {
         if (!updatedEnrollments[slot.id]) updatedEnrollments[slot.id] = [];
         Object.keys(allStudentsMap).forEach((id) => {
-          if (parseInt(allStudentsMap[id].cohort) === parseInt(slot.cohort)) {
+          // Handle both string cohorts (e.g., "FYM") and numeric (e.g., 1)
+          let studentCohortNumeric = allStudentsMap[id].cohort;
+          if (typeof studentCohortNumeric === "string") {
+            // Map cohort name back to numeric ID
+            const found = Object.entries(sysConfig.cohorts).find(
+              ([_, name]) => name === studentCohortNumeric,
+            );
+            studentCohortNumeric = found
+              ? found[0]
+              : String(studentCohortNumeric);
+          }
+          if (
+            parseInt(String(studentCohortNumeric)) === parseInt(slot.cohort)
+          ) {
             if (!updatedEnrollments[slot.id].includes(id))
               updatedEnrollments[slot.id].push(id);
           }
