@@ -1,27 +1,37 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__ . '/headers.php';
+// FILE: php-api/config/Api.php
+require_once __DIR__ . '/cors.php';
 require_once __DIR__ . '/Database.php';
 
-function readJsonInput(): array {
-    $raw = file_get_contents('php://input');
-    if ($raw === false || trim($raw) === '') return [];
-    $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
-}
-
+/**
+ * Gets the HTTP request method.
+ */
 function getRequestMethod(): string {
-    return strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    return $_SERVER['REQUEST_METHOD'] ?? 'GET';
 }
 
-function sanitizeText($value): string {
-    return trim(strip_tags((string) ($value ?? '')));
+/**
+ * Reads JSON input from the request body.
+ */
+function readJsonInput(): array {
+    $input = file_get_contents('php://input');
+    return json_decode($input, true) ?? [];
 }
 
-function sendJson(array $payload, int $statusCode = 200): void {
-    http_response_code($statusCode);
-    header('Content-Type: application/json');
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+/**
+ * Sanitizes input text.
+ */
+function sanitizeText(?string $text): string {
+    if ($text === null) return '';
+    return htmlspecialchars(strip_tags(trim($text)));
+}
+
+/**
+ * Sends a JSON response and exits.
+ */
+function sendJson(array $data, int $code = 200): void {
+    header('Content-Type: application/json; charset=utf-8');
+    http_response_code($code);
+    echo json_encode($data);
+    exit();
 }

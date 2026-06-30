@@ -1,11 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiHealth, getStudents as getStudentsFromApi, createStudent, updateStudent, deleteStudent } from '../services/studentService';
+import {
+  getApiHealth,
+  getStudents as getStudentsFromApi,
+  createStudent,
+  updateStudent,
+  deleteStudent,
+  bulkCreateStudents,
+  bulkDeleteStudents
+} from '../services/studentService';
 import { getLogs, purgeLogs, deleteAttendanceLog } from '../services/logService';
-import { getPaymentAlerts, purgeAlerts, markAlertRead } from '../services/logService';
+import { getPaymentAlerts, purgeAlerts, markAlertRead, markAllAlertsRead } from '../services/logService';
 import { getScheduleData, syncScheduleData, deleteSchedule as deleteScheduleFromApi } from '../services/scheduleService';
 import { getRemoteConfig, saveRemoteConfig } from '../services/configService';
-import { Alert, Share, useColorScheme } from 'react-native';
+import { Alert, Share, useColorScheme, Platform } from 'react-native';
 import { getColors } from '../constants/Theme';
 
 interface AppContextType {
@@ -22,7 +30,9 @@ interface AppContextType {
   adminPassword: string;
   saveAllStudents: (data: Record<string, any>) => Promise<void>;
   registerStudent: (student: any) => Promise<void>;
+  bulkRegisterStudents: (studentsList: any[]) => Promise<void>;
   removeStudent: (id: string) => Promise<void>;
+  bulkRemoveStudents: (ids: string[]) => Promise<void>;
   saveAllSchedule: (data: any[], enrollmentsOverride?: Record<string, string[]>) => Promise<void>;
   removeSchedule: (id: string) => Promise<void>;
   saveAllEnrollments: (data: Record<string, string[]>, scheduleOverride?: any[]) => Promise<void>;
@@ -30,16 +40,20 @@ interface AppContextType {
   removeLog: (id: string | number) => Promise<void>;
   saveAllAlerts: (data: any[]) => Promise<void>;
   markAlertAsRead: (id: number | string) => Promise<void>;
+  markAllAlertsAsRead: () => Promise<void>;
   saveAllConfig: (data: any) => Promise<void>;
   updateStudentPaymentStatus: (studentId: string, status: string) => Promise<void>;
   persistAdminPassword: (pwd: string) => Promise<void>;
   toggleTheme: () => void;
+  loadAlertsFromApi: (isBackground?: boolean) => Promise<void>;
   // Helpers
   getYearGroupFromCohort: (value: any) => 'F' | 'S' | null;
   getYearLabelFromCohort: (value: any) => string;
   isYearCompatible: (studentCohort: any, courseCohort: any) => boolean;
   getPaymentSummary: (value: string | undefined) => { status: string; label: string };
   hasFullTermPayment: (studentId: string) => boolean;
+  isPaymentCurrent: (studentId: string) => boolean;
+  getCurrentTerm: () => string | null;
   downloadBackup: () => Promise<void>;
 }
 
@@ -69,6 +83,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'lbl-terminal-title': 'Rhema Check-In Terminal',
     },
     cohorts: { '1': 'FYM', '2': 'FYE', '3': 'SYM', '4': 'SYE' },
+    terms: {
+      '1': { start: '', end: '' },
+      '2': { start: '', end: '' },
+      '3': { start: '', end: '' },
+      '4': { start: '', end: '' },
+    },
   });
 
   const resolvedTheme = useMemo(() => {
@@ -104,14 +124,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch(e) {}
       });
 
-      // Load from API
-      await Promise.all([
-        loadApiStudents(),
-        loadLogsFromApi(),
-        loadScheduleFromApi(),
-        loadConfigFromApi(),
-        loadAlertsFromApi()
-      ]);
+      // Load from API sequentially to reduce initial connection bursts
+      try { await loadApiStudents(); } catch (e) {}
+      try { await loadLogsFromApi(); } catch (e) {}
+      try { await loadScheduleFromApi(); } catch (e) {}
+      try { await loadConfigFromApi(); } catch (e) {}
+      try { await loadAlertsFromApi(); } catch (e) {}
 
       // Ensure splash shows for at least 3500ms
       const elapsedTime = Date.now() - startTime;
@@ -122,6 +140,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }, remainingTime);
     };
     load();
+
+    // LIVE NOTIFICATION POLLING: every 20 seconds
+    const interval = setInterval(() => {
+      loadAlertsFromApi(true); // silent=true
+    }, 20000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadApiStudents = async () => {
@@ -186,12 +211,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
   };
 
-  const loadAlertsFromApi = async () => {
+  const loadAlertsFromApi = async (isBackground = false) => {
     try {
       const res = await getPaymentAlerts();
       if (res?.success) {
-        setPaymentAlerts(res.data || []);
-        await AsyncStorage.setItem('rhema_payment_alerts', JSON.stringify(res.data));
+        const newData = res.data || [];
+
+        if (isBackground) {
+           setPaymentAlerts(prev => {
+             const prevUnreadIds = new Set(prev.filter(a => !a.is_read).map(a => String(a.id)));
+             const newUnreads = newData.filter((a: any) => !a.is_read && !prevUnreadIds.has(String(a.id)));
+
+             if (newUnreads.length > 0 && Platform.OS !== 'web') {
+                Alert.alert(
+                  '🚨 Security Alert',
+                  `${newUnreads[0].name} attempt blocked.`,
+                  [{ text: 'View Alerts', onPress: () => {} }]
+                );
+             }
+             return newData;
+           });
+        } else {
+           setPaymentAlerts(newData);
+        }
+
+        await AsyncStorage.setItem('rhema_payment_alerts', JSON.stringify(newData));
       }
     } catch {}
   };
@@ -228,6 +272,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const hasFullTermPayment = (id: string) => getPaymentSummary(paymentStatus[id]).status === 'all-paid';
 
+  const getCurrentTerm = () => {
+    const now = new Date();
+    const isoDate = now.toISOString().split('T')[0];
+    const term = Object.entries(sysConfig.terms || {}).find(([id, dates]: [string, any]) => {
+      return dates.start && dates.end && isoDate >= dates.start && isoDate <= dates.end;
+    });
+    return term ? term[0] : null;
+  };
+
+  const isPaymentCurrent = (id: string) => {
+    const status = String(paymentStatus[id] || 'Pending').toLowerCase();
+    if (status === 'paid') return true;
+    const currentTerm = getCurrentTerm();
+    if (!currentTerm) return true; // Default to true if no active term window is defined
+
+    // Logic: if current term is 2, they are current if status is 'paid', 'term 2', 'term 3', or 'term 4'
+    // But usually it's cumulative. Let's see how they enter it.
+    // If they have 'Term 2' in their status, it should mean they've paid for at least Term 2.
+
+    if (status.includes(`term ${currentTerm}`)) return true;
+
+    // Check if they paid for a LATER term (which implies they paid for earlier ones?)
+    for (let t = Number(currentTerm) + 1; t <= 4; t++) {
+      if (status.includes(`term ${t}`)) return true;
+    }
+
+    return false;
+  };
+
   // Persistence
   const saveAllStudents = async (data: Record<string, any>) => {
     setStudents(data);
@@ -241,21 +314,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(nextStudents);
     await AsyncStorage.setItem('rhema_students', JSON.stringify(nextStudents));
 
-    if (apiStatus === 'online') {
-      try {
-        const payload = { ...student, payment_status: pStatus };
-        // We use update then create if fails to handle upsert behavior on the PHP end
-        const res = await updateStudent(payload);
-        if (!res?.success) {
-          await createStudent(payload);
-        }
-      } catch (err) {
-        try {
-          await createStudent({ ...student, payment_status: pStatus });
-        } catch (e) {
-          console.error('Failed to register student on API', e);
-        }
-      }
+    try {
+      const payload = { ...student, payment_status: pStatus };
+      // We use addStudent.php which now handles upsert
+      await createStudent(payload);
+    } catch (err) {
+      console.error('Failed to register student on API', err);
+    }
+  };
+
+  const bulkRegisterStudents = async (studentsList: any[]) => {
+    const nextStudents = { ...students };
+    const nextPaymentStatus = { ...paymentStatus };
+
+    studentsList.forEach(s => {
+      const idStr = String(s.id);
+      const pStatus = paymentStatus[idStr] || 'Pending';
+      nextStudents[idStr] = { ...s, payment_status: pStatus };
+      nextPaymentStatus[idStr] = pStatus;
+    });
+
+    setStudents(nextStudents);
+    setPaymentStatus(nextPaymentStatus);
+    await AsyncStorage.setItem('rhema_students', JSON.stringify(nextStudents));
+    await AsyncStorage.setItem('rhema_payment_status', JSON.stringify(nextPaymentStatus));
+
+    try {
+      const studentsWithPayment = studentsList.map(s => ({
+        student_id: String(s.id),
+        name: s.name,
+        class: s.cohort,
+        payment_status: nextPaymentStatus[String(s.id)] || 'Pending'
+      }));
+      await bulkCreateStudents(studentsWithPayment);
+    } catch (e) {
+      console.error('Bulk registration failed on API', e);
     }
   };
 
@@ -282,18 +375,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem('rhema_payment_status', JSON.stringify(nextPaymentStatus));
     await AsyncStorage.setItem('rhema_enrollments', JSON.stringify(nextEnrollments));
 
-    // Try to delete from API regardless of initial health check status
+    // Try to delete from API
     try {
       console.log(`[SYNC] Attempting API deletion for student: ${idStr}`);
       const res = await deleteStudent(idStr);
-      console.log('[SYNC] Delete student response:', res);
       if (res?.success) {
         console.log(`[SYNC] Successfully deleted student ${idStr} from server`);
-      } else {
-        console.warn(`[SYNC] Server returned fail for student ${idStr}:`, res?.message);
       }
     } catch (e: any) {
       console.error(`[SYNC] Network/Server error deleting student ${idStr}:`, e.message);
+    }
+  };
+
+  const bulkRemoveStudents = async (ids: string[]) => {
+    const nextStudents = { ...students };
+    const nextPaymentStatus = { ...paymentStatus };
+    const nextEnrollments = { ...courseEnrollments };
+
+    ids.forEach(id => {
+      const idStr = String(id);
+      delete nextStudents[idStr];
+      delete nextPaymentStatus[idStr];
+      Object.keys(nextEnrollments).forEach((slotId) => {
+        if (Array.isArray(nextEnrollments[slotId])) {
+          nextEnrollments[slotId] = nextEnrollments[slotId].filter((sid) => sid !== idStr);
+        }
+      });
+    });
+
+    setStudents(nextStudents);
+    setPaymentStatus(nextPaymentStatus);
+    setCourseEnrollments(nextEnrollments);
+
+    await AsyncStorage.setItem('rhema_students', JSON.stringify(nextStudents));
+    await AsyncStorage.setItem('rhema_payment_status', JSON.stringify(nextPaymentStatus));
+    await AsyncStorage.setItem('rhema_enrollments', JSON.stringify(nextEnrollments));
+
+    if (apiStatus !== 'offline') {
+      try {
+        await bulkDeleteStudents(ids);
+      } catch (e) {
+        console.error('Bulk deletion failed on API', e);
+      }
     }
   };
 
@@ -304,15 +427,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem('rhema_schedule', JSON.stringify(data));
     await AsyncStorage.setItem('rhema_enrollments', JSON.stringify(nextEnrollments));
 
-    if (apiStatus === 'online') {
-      try {
-        const res = await syncScheduleData({ schedules: data, enrollments: nextEnrollments });
-        if (!res?.success) {
-          Alert.alert('Sync Error', res?.message || 'Failed to sync schedule with server');
-        }
-      } catch (err) {
-        console.error('Schedule sync error:', err);
+    try {
+      const res = await syncScheduleData({ schedules: data, enrollments: nextEnrollments });
+      if (!res?.success) {
+        console.warn('Sync Warning', res?.message || 'Failed to sync schedule with server');
       }
+    } catch (err) {
+      console.error('Schedule sync error:', err);
     }
   };
 
@@ -327,16 +448,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem('rhema_schedule', JSON.stringify(nextSchedule));
     await AsyncStorage.setItem('rhema_enrollments', JSON.stringify(nextEnrollments));
 
-    if (apiStatus === 'online') {
+    try {
+      await deleteScheduleFromApi(id);
+    } catch (e) {
+      console.error('Failed to delete schedule from API', e);
+      // Fallback to full sync if specialized delete fails
       try {
-        await deleteScheduleFromApi(id);
-      } catch (e) {
-        console.error('Failed to delete schedule from API', e);
-        // Fallback to full sync if specialized delete fails
-        try {
-          await syncScheduleData({ schedules: nextSchedule, enrollments: nextEnrollments });
-        } catch (syncErr) {}
-      }
+        await syncScheduleData({ schedules: nextSchedule, enrollments: nextEnrollments });
+      } catch (syncErr) {}
     }
   };
 
@@ -346,26 +465,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await AsyncStorage.setItem('rhema_enrollments', JSON.stringify(data));
     await AsyncStorage.setItem('rhema_schedule', JSON.stringify(scheduleOverride));
 
-    if (apiStatus === 'online') {
-      try {
-        const res = await syncScheduleData({ schedules: scheduleOverride, enrollments: data });
-        if (!res?.success) {
-          Alert.alert('Sync Error', res?.message || 'Failed to sync enrollments with server');
-        }
-      } catch (err) {
-        console.error('Enrollment sync error:', err);
+    try {
+      const res = await syncScheduleData({ schedules: scheduleOverride, enrollments: data });
+      if (!res?.success) {
+        console.warn('Sync Warning', res?.message || 'Failed to sync enrollments with server');
       }
+    } catch (err) {
+      console.error('Enrollment sync error:', err);
     }
   };
 
   const saveAllLogs = async (data: any[]) => {
     setAttendanceLogs(data);
     await AsyncStorage.setItem('rhema_attendance_records', JSON.stringify(data));
-    if (data.length === 0 && apiStatus === 'online') {
+    if (data.length === 0) {
       try {
         const res = await purgeLogs();
         if (!res?.success) {
-          Alert.alert('Sync Error', 'Failed to purge logs on server');
+          console.warn('Sync Warning', 'Failed to purge logs on server');
         }
       } catch (err) {
         console.error('Purge logs error:', err);
@@ -378,19 +495,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendanceLogs(nextLogs);
     await AsyncStorage.setItem('rhema_attendance_records', JSON.stringify(nextLogs));
 
-    if (apiStatus === 'online') {
-      try {
-        await deleteAttendanceLog(id);
-      } catch (e) {
-        console.error('Delete log error:', e);
-      }
+    try {
+      await deleteAttendanceLog(id);
+    } catch (e) {
+      console.error('Delete log error:', e);
     }
   };
 
   const saveAllAlerts = async (data: any[]) => {
     setPaymentAlerts(data);
     await AsyncStorage.setItem('rhema_payment_alerts', JSON.stringify(data));
-    if (data.length === 0 && apiStatus === 'online') {
+    if (data.length === 0) {
       try {
         await purgeAlerts();
       } catch (err) {
@@ -404,20 +519,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPaymentAlerts(next);
     await AsyncStorage.setItem('rhema_payment_alerts', JSON.stringify(next));
 
-    if (apiStatus === 'online') {
-      try {
-        await markAlertRead(id);
-      } catch (e) {
-        console.error('Failed to mark alert as read on API', e);
-      }
+    try {
+      await markAlertRead(id);
+    } catch (e) {
+      console.error('Failed to mark alert as read on API', e);
+    }
+  };
+
+  const markAllAlertsAsRead = async () => {
+    const next = paymentAlerts.map(a => ({ ...a, is_read: 1 }));
+    setPaymentAlerts(next);
+    await AsyncStorage.setItem('rhema_payment_alerts', JSON.stringify(next));
+
+    try {
+      await markAllAlertsRead();
+    } catch (e) {
+      console.error('Failed to mark all alerts as read on API', e);
     }
   };
 
   const saveAllConfig = async (data: any) => {
     setSysConfig(data);
     await AsyncStorage.setItem('rhema_sys_config', JSON.stringify(data));
-    if (apiStatus === 'online') {
-      try { await saveRemoteConfig(data); } catch {}
+    try {
+      const res = await saveRemoteConfig(data);
+      if (!res?.success) {
+        console.warn('Remote Save Warning', res?.message || 'Failed to sync config with server');
+      }
+    } catch (err: any) {
+      console.error('Save config error:', err);
     }
   };
 
@@ -434,12 +564,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setStudents(nextStudents);
       await AsyncStorage.setItem('rhema_students', JSON.stringify(nextStudents));
 
-      if (apiStatus === 'online') {
-        try {
-          await updateStudent(updatedStudent);
-        } catch (e) {
-          console.error('Failed to update payment status on API', e);
-        }
+      try {
+        await updateStudent(updatedStudent);
+      } catch (e) {
+        console.error('Failed to update payment status on API', e);
       }
     }
   };
@@ -466,9 +594,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       students, schedule, courseEnrollments, attendanceLogs, paymentAlerts, sysConfig, paymentStatus, apiStatus, isLoading, adminPassword,
-      saveAllStudents, registerStudent, removeStudent, saveAllSchedule, removeSchedule, saveAllEnrollments, saveAllLogs, removeLog, saveAllAlerts, markAlertAsRead, saveAllConfig,
+      saveAllStudents, registerStudent, bulkRegisterStudents, removeStudent, bulkRemoveStudents, saveAllSchedule, removeSchedule, saveAllEnrollments, saveAllLogs, removeLog, saveAllAlerts, markAlertAsRead, markAllAlertsAsRead, saveAllConfig,
       updateStudentPaymentStatus, persistAdminPassword, getYearGroupFromCohort, getYearLabelFromCohort,
-      isYearCompatible, getPaymentSummary, hasFullTermPayment, downloadBackup
+      isYearCompatible, getPaymentSummary, hasFullTermPayment, isPaymentCurrent, getCurrentTerm, downloadBackup, loadAlertsFromApi
     }}>
       {children}
     </AppContext.Provider>

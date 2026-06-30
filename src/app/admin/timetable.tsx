@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, TextInput, Modal, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, TextInput, Modal, Alert, Platform, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Calendar, Plus, Trash2, Clock, Users, X, Search, CheckSquare, Square, Pencil, UserPlus, Settings, Save, ArrowLeft, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react-native';
+import { Calendar, Plus, Trash2, Clock, Users, X, Search, CheckSquare, Square, Pencil, UserPlus, Settings, Save, ArrowLeft, ChevronLeft, ChevronRight, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react-native';
 import { useAppContext } from '../../context/AppContext';
 import { Colors, Spacing, BorderRadius } from '../../constants/Theme';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown, Layout, SlideInRight } from 'react-native-reanimated';
+
+import SplashScreen from '../../components/SplashScreen';
 
 export default function AdminTimetableScreen() {
   const router = useRouter();
@@ -38,6 +40,7 @@ export default function AdminTimetableScreen() {
   const [showSinglePicker, setShowSinglePicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const [timetableSearch, setTimetableSearch] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Picker States
   const [pickerModal, setPickerModal] = useState<{ visible: boolean; type: 'date' | 'time'; field: string; data: any[] }>({
@@ -47,13 +50,20 @@ export default function AdminTimetableScreen() {
     data: []
   });
 
+  const [manualTime, setManualTime] = useState({ hour: '09', min: '00' });
+
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   const openPicker = (type: 'date' | 'time', field: string) => {
+    setPickerSearch(''); // Reset search when opening
     let data: any[] = [];
     if (type === 'time') {
+      const currentVal = managingSlotId ? editFormData[field] : newSlot[field];
+      const [h, m] = (currentVal || '09:00').split(':');
+      setManualTime({ hour: h || '09', min: m || '00' });
+
       const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-      const mins = ['00', '15', '30', '45'];
+      const mins = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
       data = hours.flatMap(h => mins.map(m => `${h}:${m}`));
     } else {
       // Set calendar month to the current field value if valid, or today
@@ -84,6 +94,45 @@ export default function AdminTimetableScreen() {
     next.setMonth(next.getMonth() + offset);
     setCalendarMonth(next);
   };
+
+  const adjustManualTime = (part: 'hour' | 'min', delta: number) => {
+    let val = parseInt(manualTime[part]);
+    val += delta;
+    if (part === 'hour') {
+      if (val > 23) val = 0;
+      if (val < 0) val = 23;
+    } else {
+      if (val > 59) val = 0;
+      if (val < 0) val = 59;
+    }
+    setManualTime({ ...manualTime, [part]: String(val).padStart(2, '0') });
+  };
+
+  const renderTimeAdjuster = () => (
+    <View style={styles.timeAdjusterContainer}>
+      <View style={styles.adjusterRow}>
+        <View style={styles.adjusterCol}>
+          <TouchableOpacity onPress={() => adjustManualTime('hour', 1)} style={styles.adjBtn}><ChevronUp size={24} color={Colors.primary} /></TouchableOpacity>
+          <View style={styles.adjDisplay}><Text style={styles.adjText}>{manualTime.hour}</Text></View>
+          <TouchableOpacity onPress={() => adjustManualTime('hour', -1)} style={styles.adjBtn}><ChevronDown size={24} color={Colors.primary} /></TouchableOpacity>
+          <Text style={styles.adjLabel}>HOUR</Text>
+        </View>
+        <Text style={styles.adjSeparator}>:</Text>
+        <View style={styles.adjusterCol}>
+          <TouchableOpacity onPress={() => adjustManualTime('min', 5)} style={styles.adjBtn}><ChevronUp size={24} color={Colors.primary} /></TouchableOpacity>
+          <View style={styles.adjDisplay}><Text style={styles.adjText}>{manualTime.min}</Text></View>
+          <TouchableOpacity onPress={() => adjustManualTime('min', -5)} style={styles.adjBtn}><ChevronDown size={24} color={Colors.primary} /></TouchableOpacity>
+          <Text style={styles.adjLabel}>MIN</Text>
+        </View>
+      </View>
+      <TouchableOpacity
+        style={styles.adjConfirmBtn}
+        onPress={() => handlePickerSelect(`${manualTime.hour}:${manualTime.min}`)}
+      >
+        <Text style={styles.adjConfirmText}>Set Selection</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderCalendar = () => {
     const year = calendarMonth.getFullYear();
@@ -153,12 +202,13 @@ export default function AdminTimetableScreen() {
   const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const DAYS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  const handleCreateCourse = () => {
+  const handleCreateCourse = async () => {
     if (!newSlot.course || !newSlot.startDate || !newSlot.endDate || !newSlot.start || !newSlot.end || newSlot.days.length === 0) {
       Alert.alert('Incomplete', 'Please fill all fields.');
       return;
     }
 
+    setIsProcessing(true);
     const slotId = 'c_' + Date.now();
     const slot = {
       id: slotId,
@@ -182,9 +232,13 @@ export default function AdminTimetableScreen() {
       });
     }
 
-    saveAllSchedule(nextSchedule, nextEnrollments);
-    setCreateModalVisible(false);
-    setNewSlot({ ...newSlot, course: '' });
+    try {
+      await saveAllSchedule(nextSchedule, nextEnrollments);
+      setCreateModalVisible(false);
+      setNewSlot({ ...newSlot, course: '' });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const openManageModal = (slot: any) => {
@@ -193,12 +247,17 @@ export default function AdminTimetableScreen() {
     setManageTab('roster');
   };
 
-  const handleUpdateSchedule = () => {
+  const handleUpdateSchedule = async () => {
+    setIsProcessing(true);
     const nextSchedule = schedule.map(s =>
       s.id === managingSlotId ? { ...editFormData, cohort: parseInt(editFormData.cohort) } : s
     );
-    saveAllSchedule(nextSchedule);
-    Alert.alert('Success', 'Parameters updated.');
+    try {
+      await saveAllSchedule(nextSchedule);
+      Alert.alert('Success', 'Parameters updated.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const deleteScheduleSlot = (id: string, name: string) => {
@@ -209,10 +268,13 @@ export default function AdminTimetableScreen() {
     const { id } = deleteConfirmation;
     setDeleteConfirmation({ ...deleteConfirmation, visible: false });
     setManagingSlotId(null);
+    setIsProcessing(true);
     try {
       await removeSchedule(id);
     } catch (err) {
       console.error('Deletion error', err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -261,6 +323,16 @@ export default function AdminTimetableScreen() {
       (sysConfig.cohorts[s.cohort] || '').toLowerCase().includes(timetableSearch.toLowerCase())
     );
   }, [schedule, timetableSearch, sysConfig.cohorts]);
+
+  const filteredTimeData = useMemo(() => {
+    if (pickerModal.type !== 'time') return [];
+    const base = pickerModal.data.filter((t: string) => t.includes(pickerSearch));
+    // If user typed a valid HH:MM that isn't in the 5-min list, add it as first option
+    if (pickerSearch.length === 5 && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(pickerSearch) && !base.includes(pickerSearch)) {
+      return [pickerSearch, ...base];
+    }
+    return base;
+  }, [pickerModal.data, pickerModal.type, pickerSearch]);
 
   const renderScheduleItem = ({ item, index }: { item: any; index: number }) => (
     <Animated.View
@@ -317,6 +389,7 @@ export default function AdminTimetableScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {isProcessing && <SplashScreen message="Updating schedule..." />}
       <Animated.View entering={SlideInRight} style={styles.screenHeader}>
           <View style={styles.headerTitleRow}>
             <TouchableOpacity onPress={() => router.replace('/')} style={styles.backBtn}>
@@ -557,24 +630,45 @@ export default function AdminTimetableScreen() {
            <View style={[styles.pickerModalContent, pickerModal.type === 'date' && { height: 'auto', paddingBottom: 40 }]}>
               <View style={styles.pickerHeader}>
                  <Text style={styles.pickerTitle}>Select {pickerModal.type.toUpperCase()}</Text>
-                 <TouchableOpacity onPress={() => setPickerModal({...pickerModal, visible: false})}><X size={20} color={Colors.text} /></TouchableOpacity>
+                 <TouchableOpacity onPress={() => { setPickerModal({...pickerModal, visible: false}); setPickerSearch(''); }}><X size={20} color={Colors.text} /></TouchableOpacity>
               </View>
+
               {pickerModal.type === 'date' ? (
                 renderCalendar()
               ) : (
-                <FlatList
-                  data={pickerModal.data}
-                  keyExtractor={item => item}
-                  renderItem={({item}) => (
-                    <TouchableOpacity style={styles.pickerItem} onPress={() => handlePickerSelect(item)}>
-                      <Text style={styles.pickerItemText}>{item}</Text>
-                      {((managingSlotId ? editFormData[pickerModal.field] : newSlot[pickerModal.field]) === item) && (
-                        <CheckSquare size={18} color={Colors.primary} />
+                <View style={{ paddingBottom: 20 }}>
+                   {renderTimeAdjuster()}
+
+                   <View style={styles.timeDivider}>
+                      <Text style={styles.timeDividerText}>OR QUICK SELECT</Text>
+                   </View>
+
+                   <View style={{ padding: 15 }}>
+                      <View style={styles.searchBarMini}>
+                          <Search size={16} color="#94a3b8" />
+                          <TextInput
+                            style={styles.searchInputMini}
+                            placeholder="Filter times..."
+                            value={pickerSearch}
+                            onChangeText={setPickerSearch}
+                          />
+                      </View>
+                   </View>
+
+                   <FlatList
+                      data={filteredTimeData}
+                      keyExtractor={item => item}
+                      style={{ maxHeight: 200 }}
+                      renderItem={({item}) => (
+                        <TouchableOpacity style={styles.pickerItem} onPress={() => handlePickerSelect(item)}>
+                          <Text style={styles.pickerItemText}>{item}</Text>
+                          {((managingSlotId ? editFormData[pickerModal.field] : newSlot[pickerModal.field]) === item) && (
+                            <CheckSquare size={18} color={Colors.primary} />
+                          )}
+                        </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
-                  )}
-                  contentContainerStyle={{ paddingBottom: 20 }}
-                />
+                    />
+                </View>
               )}
            </View>
         </View>
@@ -617,7 +711,17 @@ export default function AdminTimetableScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  screenHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
+screenHeader: {
+   flexDirection: 'row',
+   alignItems: 'center',
+   justifyContent: 'space-between',
+   paddingHorizontal: 20,
+   paddingTop: Platform.OS === 'android'
+     ? StatusBar.currentHeight + 2
+     : 2,
+   paddingBottom: 50,
+   backgroundColor: '#fff',
+ },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   screenTitle: { fontSize: 28, fontWeight: '900', color: '#0f172a', letterSpacing: -0.5 },
   backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
@@ -711,6 +815,19 @@ const styles = StyleSheet.create({
   pickerTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a', textTransform: 'uppercase' },
   pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18, borderBottomWidth: 1, borderBottomColor: '#f8fafc' },
   pickerItemText: { fontSize: 15, fontWeight: '700', color: '#334155' },
+
+  timeAdjusterContainer: { padding: 20, alignItems: 'center' },
+  adjusterRow: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 20 },
+  adjusterCol: { alignItems: 'center', gap: 8 },
+  adjBtn: { width: 50, height: 40, backgroundColor: '#f1f5f9', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  adjDisplay: { width: 70, height: 70, backgroundColor: '#f8fafc', borderRadius: 20, borderWIdth: 2, borderColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' },
+  adjText: { fontSize: 32, fontWeight: '900', color: '#0f172a' },
+  adjLabel: { fontSize: 10, fontWeight: '800', color: '#94a3b8', letterSpacing: 1 },
+  adjSeparator: { fontSize: 32, fontWeight: '900', color: '#cbd5e1', marginBottom: 20 },
+  adjConfirmBtn: { backgroundColor: Colors.primary, width: '100%', height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  adjConfirmText: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  timeDivider: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  timeDividerText: { fontSize: 10, fontWeight: '900', color: '#cbd5e1', letterSpacing: 1 },
 
   calendarContainer: { padding: 20 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

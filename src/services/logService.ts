@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 export type AttendanceLog = {
   id?: number;
@@ -13,47 +13,119 @@ export type AttendanceLog = {
   created_at?: string;
 };
 
+// ----------------------
+// LOGS
+// ----------------------
+
 export async function getLogs() {
-  const { data } = await api.get('/logs/getLogs.php');
-  return data;
+  try {
+    const { data } = await api.get("/logs/getLogs.php");
+    return data;
+  } catch (err: any) {
+    console.log("GET LOGS ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function createAttendanceLog(log: AttendanceLog) {
-  const { data } = await api.post('/logs/addLog.php', log);
-  return data;
+  try {
+    const { data } = await api.post("/logs/addLog.php", log);
+    return data;
+  } catch (err: any) {
+    console.log("CREATE LOG ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function updateAttendanceLog(log: AttendanceLog & { id: number }) {
-  const { data } = await api.put('/logs/updateLog.php', log);
-  return data;
+  try {
+    // FIX: use POST instead of PUT (PHP-safe)
+    const { data } = await api.post("/logs/updateLog.php", log);
+    return data;
+  } catch (err: any) {
+    console.log("UPDATE LOG ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function deleteAttendanceLog(id: number | string) {
-  const { data } = await api.post('/logs/deleteLog.php', { id });
-  return data;
+  try {
+    const { data } = await api.post("/logs/deleteLog.php", {
+      id: String(id),
+    });
+    return data;
+  } catch (err: any) {
+    console.log("DELETE LOG ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
+
+// ----------------------
+// ADMIN ACTIONS
+// ----------------------
 
 export async function purgeLogs() {
-  const { data } = await api.post('/logs/purgeLogs.php', {});
-  return data;
+  try {
+    const { data } = await api.post("/logs/purgeLogs.php", {});
+    return data;
+  } catch (err: any) {
+    console.log("PURGE LOGS ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
+// ----------------------
+// ALERTS
+// ----------------------
+
 export async function getPaymentAlerts() {
-  const { data } = await api.get('/logs/getAlerts.php');
-  return data;
+  try {
+    const { data } = await api.get("/logs/getAlerts.php");
+    return data;
+  } catch (err: any) {
+    console.log("GET ALERTS ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function createPaymentAlert(alert: any) {
-  const { data } = await api.post('/logs/addAlert.php', alert);
-  return data;
+  try {
+    const { data } = await api.post("/logs/addAlert.php", alert);
+    return data;
+  } catch (err: any) {
+    console.log("CREATE ALERT ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function purgeAlerts() {
-  const { data } = await api.post('/logs/purgeAlerts.php', {});
-  return data;
+  try {
+    const { data } = await api.post("/logs/purgeAlerts.php", {});
+    return data;
+  } catch (err: any) {
+    console.log("PURGE ALERTS ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }
 
 export async function markAlertRead(id: number | string) {
-  const { data } = await api.post('/logs/markAlertRead.php', { id });
-  return data;
+  try {
+    const { data } = await api.post("/logs/markAlertRead.php", {
+      id: String(id),
+    });
+    return data;
+  } catch (err: any) {
+    console.log("MARK ALERT READ ERROR:", err.response?.data || err.message);
+    throw err;
+  }
+}
+
+export async function markAllAlertsRead() {
+  try {
+    const { data } = await api.post("/logs/markAllAlertsRead.php", {});
+    return data;
+  } catch (err: any) {
+    console.log("MARK ALL ALERTS ERROR:", err.response?.data || err.message);
+    throw err;
+  }
 }

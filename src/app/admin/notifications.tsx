@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Platform } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Platform, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, Trash2, ArrowLeft, User, AlertTriangle, X, Download, ShieldCheck, Clock, FileText } from 'lucide-react-native';
 import { useAppContext } from '../../context/AppContext';
@@ -11,20 +11,52 @@ import * as Sharing from 'expo-sharing';
 
 export default function AdminNotificationsScreen() {
   const router = useRouter();
-  const { paymentAlerts, saveAllAlerts, markAlertAsRead } = useAppContext();
+  const { paymentAlerts, saveAllAlerts, markAlertAsRead, markAllAlertsAsRead, loadAlertsFromApi } = useAppContext();
   const [selectedAlert, setSelectedAlert] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'new' | 'read'>('new');
+
+  useEffect(() => {
+    loadAlertsFromApi();
+  }, []);
 
   const [customAlert, setCustomAlert] = useState<{
     visible: boolean;
     title: string;
     message: string;
     onConfirm: () => void;
+    confirmText?: string;
+    isDanger?: boolean;
   }>({
     visible: false,
     title: '',
     message: '',
     onConfirm: () => {},
+    confirmText: 'Confirm',
+    isDanger: false,
   });
+
+  const filteredAlerts = useMemo(() => {
+    return paymentAlerts.filter(a => activeTab === 'read' ? !!a.is_read : !a.is_read);
+  }, [paymentAlerts, activeTab]);
+
+  const markAllAsRead = async () => {
+    if (!paymentAlerts.some(a => !a.is_read)) return;
+
+    const performMark = async () => {
+      setCustomAlert(prev => ({ ...prev, visible: false }));
+      await markAllAlertsAsRead();
+      Alert.alert('Success', 'All notifications marked as reviewed.');
+    };
+
+    setCustomAlert({
+      visible: true,
+      title: 'Review All Attempts',
+      message: 'Are you sure you want to mark all notifications as reviewed? This will move them to the reviewed history.',
+      onConfirm: performMark,
+      confirmText: 'Review All',
+      isDanger: false
+    });
+  };
 
   const clearAllAlerts = () => {
     const performClear = async () => {
@@ -35,8 +67,10 @@ export default function AdminNotificationsScreen() {
     setCustomAlert({
       visible: true,
       title: 'Clear Security Feed',
-      message: 'Are you sure you want to permanently remove all payment block notifications from the server?',
-      onConfirm: performClear
+      message: 'Are you sure you want to permanently remove ALL notifications (both new and reviewed) from the database?',
+      onConfirm: performClear,
+      confirmText: 'Clear All',
+      isDanger: true
     });
   };
 
@@ -129,9 +163,14 @@ export default function AdminNotificationsScreen() {
             <Text style={styles.screenTitle}>Alerts</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
+            {activeTab === 'new' && paymentAlerts.some(a => !a.is_read) && (
+              <TouchableOpacity style={[styles.clearBtn, { backgroundColor: Colors.blue50 }]} onPress={markAllAsRead}>
+                <ShieldCheck size={20} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
             {paymentAlerts.length > 0 && (
-              <TouchableOpacity style={[styles.clearBtn, { backgroundColor: Colors.blue50 }]} onPress={exportAlertsCSV}>
-                <Download size={20} color={Colors.primary} />
+              <TouchableOpacity style={[styles.clearBtn, { backgroundColor: '#f0fdf4' }]} onPress={exportAlertsCSV}>
+                <Download size={20} color="#166534" />
               </TouchableOpacity>
             )}
             {paymentAlerts.length > 0 && (
@@ -147,18 +186,53 @@ export default function AdminNotificationsScreen() {
         <Text style={styles.infoSubtitle}>Tracking unauthorized kiosk check-in attempts.</Text>
       </View>
 
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'new' && styles.tabActive]}
+          onPress={() => setActiveTab('new')}
+        >
+          <Text style={[styles.tabText, activeTab === 'new' && styles.tabTextActive]}>
+            NEW ATTEMPTS ({paymentAlerts.filter(a => !a.is_read).length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'read' && styles.tabActive]}
+          onPress={() => setActiveTab('read')}
+        >
+          <Text style={[styles.tabText, activeTab === 'read' && styles.tabTextActive]}>
+            REVIEWED ({paymentAlerts.filter(a => !!a.is_read).length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
-        data={paymentAlerts}
+        data={filteredAlerts}
         keyExtractor={(item, index) => item.id?.toString() || index.toString()}
         renderItem={renderAlertItem}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          activeTab === 'new' && filteredAlerts.length > 0 ? (
+            <TouchableOpacity
+              style={styles.markAllHeaderBtn}
+              onPress={markAllAsRead}
+              activeOpacity={0.7}
+            >
+              <ShieldCheck size={18} color={Colors.primary} />
+              <Text style={styles.markAllHeaderText}>Mark all as reviewed</Text>
+            </TouchableOpacity>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
               <Bell size={40} color="#cbd5e1" />
             </View>
             <Text style={styles.emptyText}>Feed is Clear</Text>
-            <Text style={styles.emptySubText}>New payment-blocked attempts will appear here automatically.</Text>
+            <Text style={styles.emptySubText}>
+              {activeTab === 'new'
+                ? "No new payment-blocked attempts."
+                : "No reviewed attempts found."}
+            </Text>
           </View>
         }
         ListFooterComponent={<View style={{ height: 120 }} />}
@@ -221,8 +295,12 @@ export default function AdminNotificationsScreen() {
       <Modal visible={customAlert.visible} transparent animationType="fade">
         <View style={styles.customAlertOverlay}>
           <Animated.View entering={FadeInDown.springify()} style={styles.customAlertBox}>
-            <View style={styles.alertIconWrapper}>
-              <AlertTriangle size={32} color={Colors.danger} />
+            <View style={[styles.alertIconWrapper, !customAlert.isDanger && { backgroundColor: Colors.blue50 }]}>
+              {customAlert.isDanger ? (
+                <AlertTriangle size={32} color={Colors.danger} />
+              ) : (
+                <ShieldCheck size={32} color={Colors.primary} />
+              )}
             </View>
 
             <Text style={styles.customAlertTitle}>{customAlert.title}</Text>
@@ -237,10 +315,10 @@ export default function AdminNotificationsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.alertConfirmBtn}
+                style={[styles.alertConfirmBtn, customAlert.isDanger ? { backgroundColor: Colors.danger } : { backgroundColor: Colors.primary }]}
                 onPress={customAlert.onConfirm}
               >
-                <Text style={styles.alertConfirmText}>Clear All</Text>
+                <Text style={styles.alertConfirmText}>{customAlert.confirmText || 'Confirm'}</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -252,7 +330,17 @@ export default function AdminNotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  screenHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, backgroundColor: '#fff' },
+screenHeader: {
+   flexDirection: 'row',
+   alignItems: 'center',
+   justifyContent: 'space-between',
+   paddingHorizontal: 20,
+   paddingTop: Platform.OS === 'android'
+     ? StatusBar.currentHeight + 2
+     : 2,
+   paddingBottom: 50,
+   backgroundColor: '#fff',
+ },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   screenTitle: { fontSize: 28, fontWeight: '900', color: '#0f172a', letterSpacing: -0.5 },
   backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
@@ -261,6 +349,33 @@ const styles = StyleSheet.create({
   infoArea: { paddingHorizontal: 20, marginBottom: 10 },
   infoTitle: { fontSize: 10, fontWeight: '900', color: Colors.primary, letterSpacing: 1 },
   infoSubtitle: { fontSize: 12, color: '#64748b', fontWeight: '600', marginTop: 2 },
+
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 10, gap: 10 },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, backgroundColor: '#f1f5f9', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  tabActive: { backgroundColor: '#fff', borderBottomColor: Colors.primary, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  tabText: { fontSize: 10, fontWeight: '800', color: '#64748b' },
+  tabTextActive: { color: Colors.primary },
+
+  markAllHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: Colors.blue50,
+    borderRadius: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed'
+  },
+  markAllHeaderText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
 
   list: { padding: 20, gap: 15 },
   alertCard: { backgroundColor: '#fff', borderRadius: 24, borderWidth: 1, borderColor: '#f1f5f9', padding: 18, gap: 15, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 },

@@ -1,5 +1,5 @@
 <?php
-// File: api/config/Database.php
+// File: php-api/config/Database.php
 
 class Database {
     private string $host;
@@ -9,15 +9,24 @@ class Database {
     private string $charset;
 
     public function __construct() {
+        // Use environment variables or Hostinger defaults
         $this->host = getenv('DB_HOST') ?: 'localhost';
-        $this->db = getenv('DB_NAME') ?: 'u164973018_rhema';
+
+        // Hostinger User
         $this->user = getenv('DB_USER') ?: 'u164973018_rhamazambia';
-        $this->pass = getenv('DB_PASS') ?: 'Dob@10031997';
-        $this->charset = getenv('DB_CHARSET') ?: 'utf8mb4';
+
+        // Hostinger Database
+        $this->db   = getenv('DB_NAME') ?: 'u164973018_rhema_inhouse';
+
+        // IMPORTANT: Fill your database password here or set DB_PASS environment variable
+        $this->pass = getenv('DB_PASS') ?: '';
+
+        $this->charset = 'utf8mb4';
     }
 
     public function connect(): PDO {
         $dsn = "mysql:host={$this->host};dbname={$this->db};charset={$this->charset}";
+
         $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -26,14 +35,26 @@ class Database {
 
         try {
             $pdo = new PDO($dsn, $this->user, $this->pass, $options);
+
+            // Optional: Auto-create tables if they don't exist
             $this->initialize($pdo);
+
             return $pdo;
-        } catch (\PDOException $e) {
-            throw new \PDOException($e->getMessage(), (int) $e->getCode());
+        } catch (PDOException $e) {
+            // Send back a clean error if database connection fails
+            header('Content-Type: application/json');
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Database connection failed',
+                'error' => $e->getMessage()
+            ]);
+            exit;
         }
     }
 
     private function initialize(PDO $pdo): void {
+        // Tables list as previously defined
         $queries = [
             "CREATE TABLE IF NOT EXISTS students (
                 student_id VARCHAR(50) PRIMARY KEY,
@@ -60,8 +81,8 @@ class Database {
                 schedule_id VARCHAR(100) NOT NULL,
                 student_id VARCHAR(50) NOT NULL,
                 PRIMARY KEY (schedule_id, student_id),
-                CONSTRAINT fk_schedule FOREIGN KEY (schedule_id) REFERENCES course_schedules(id) ON DELETE CASCADE,
-                CONSTRAINT fk_student FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
+                FOREIGN KEY (schedule_id) REFERENCES course_schedules(id) ON DELETE CASCADE,
+                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
             "CREATE TABLE IF NOT EXISTS rhema_attendance_records (
@@ -99,11 +120,20 @@ class Database {
                 time VARCHAR(20) NOT NULL,
                 is_read TINYINT(1) DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+            "CREATE TABLE IF NOT EXISTS academic_terms (
+                term_id INT PRIMARY KEY,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         ];
 
         foreach ($queries as $query) {
-            $pdo->exec($query);
+            try {
+                $pdo->exec($query);
+            } catch (Exception $e) {}
         }
     }
 }

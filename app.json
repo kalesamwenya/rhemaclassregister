@@ -15,9 +15,16 @@
         "image": "./assets/logo.png",
         "resizeMode": "contain",
         "backgroundColor": "#ffffff"
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "versionCode": 1,
+      "config": {
+        "usesCleartextTraffic": true
+      },
       "package": "com.rhema.classregister",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
@@ -27,7 +34,8 @@
         "image": "./assets/logo.png",
         "resizeMode": "contain",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "output": "static",
@@ -44,7 +52,8 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -53,8 +62,14 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "9826d36a-5e96-4c3d-af78-ac1d5b0389e5"
+        "projectId": "f37b359e-88ac-41bd-96d1-c31614663d0f"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f37b359e-88ac-41bd-96d1-c31614663d0f"
     }
   }
 }

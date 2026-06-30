@@ -1,31 +1,21 @@
 <?php
+// Minimal health check that always returns CORS headers
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Content-Type: application/json");
 
-require_once __DIR__ . '/config/Api.php';
-
-$dbStatus = 'unknown';
-try {
-    $db = new Database();
-    $conn = $db->connect();
-    $dbStatus = 'connected';
-} catch (Throwable $e) {
-    $dbStatus = 'failed: ' . $e->getMessage();
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
 }
 
-sendJson([
-    'success' => true,
-    'service' => 'rhema-attendance-api',
-    'status' => 'ok',
-    'database' => $dbStatus,
-    'timestamp' => date('c'),
-    'endpoints' => [
-        'students' => '/students/getStudents.php',
-        'student_create' => '/students/addStudent.php',
-        'student_update' => '/students/updateStudent.php',
-        'student_delete' => '/students/deleteStudent.php',
-        'login' => '/auth/login.php',
-        'schedules' => '/schedules/getSchedules.php',
-        'sync_schedules' => '/schedules/syncSchedules.php',
-        'logs' => '/logs/getLogs.php',
-        'config' => '/config/getConfig.php',
-    ],
-]);
+try {
+    require_once __DIR__ . '/config/Database.php';
+    $conn = getDBConnection();
+    $conn->query("SELECT 1");
+    echo json_encode(["success" => true, "status" => "online", "database" => "connected"]);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(["success" => false, "status" => "error", "message" => $e->getMessage()]);
+}

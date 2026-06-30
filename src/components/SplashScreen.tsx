@@ -4,7 +4,11 @@ import { Colors } from '../constants/Theme';
 
 const { width } = Dimensions.get('window');
 
-export default function SplashScreen() {
+interface SplashScreenProps {
+  message?: string;
+}
+
+export default function SplashScreen({ message = 'Initializing system...' }: SplashScreenProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -74,7 +78,7 @@ export default function SplashScreen() {
             <Animated.View style={[styles.progressBarFill, { width: progressWidth }]} />
           </View>
           <View style={styles.loaderMeta}>
-            <Text style={styles.loadingText}>Initializing system...</Text>
+            <Text style={styles.loadingText}>{message}</Text>
             <Text style={styles.percentText}>{percent}%</Text>
           </View>
         </View>
@@ -86,9 +90,11 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent', // Requested transparent background
+    backgroundColor: '#ffffff', // Solid white for consistency across Android, iOS, and Web
     alignItems: 'center',
     justifyContent: 'center',
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
   },
   content: {
     alignItems: 'center',
@@ -110,6 +116,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#0f172a',
     letterSpacing: 4,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,
@@ -118,9 +125,10 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
     marginTop: -4,
     marginBottom: 60,
+    textAlign: 'center',
   },
   loaderWrapper: {
-    width: width * 0.7,
+    width: width > 600 ? 400 : width * 0.7, // Cap width for web/tablets
     gap: 12,
   },
   progressBarBg: {

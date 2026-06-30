@@ -1,17 +1,24 @@
-export async function loginToApp(email: string, password: string, role: 'admin' | 'student') {
-  const validAdmin = email === 'admin@rhema.com' && password === 'admin123';
-  const validStudent = email === 'student@rhema.com' && password === 'student123';
+import api from "./api";
 
-  if ((role === 'admin' && validAdmin) || (role === 'student' && validStudent)) {
+export async function loginToApp(
+  email: string,
+  password: string,
+  role: "admin" | "student",
+) {
+  try {
+    const { data } = await api.post("/auth/login.php", {
+      email,
+      password,
+      role,
+    });
+
+    return data;
+  } catch (err: any) {
+    console.log("LOGIN ERROR:", err.response?.data || err.message);
+
     return {
-      success: true,
-      user: {
-        id: role === 'admin' ? 'admin' : 'student',
-        name: role === 'admin' ? 'Admin User' : 'Student User',
-        role,
-      },
+      success: false,
+      message: "Network or server error",
     };
   }
-
-  return { success: false, message: 'Invalid credentials' };
 }

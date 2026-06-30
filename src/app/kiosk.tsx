@@ -9,7 +9,7 @@ import { createAttendanceLog, createPaymentAlert } from '../services/logService'
 
 export default function StudentKioskScreen() {
   const router = useRouter();
-  const { students, schedule, sysConfig, attendanceLogs, saveAllLogs, isYearCompatible, getYearLabelFromCohort, hasFullTermPayment } = useAppContext();
+  const { students, schedule, sysConfig, attendanceLogs, saveAllLogs, isYearCompatible, getYearLabelFromCohort, hasFullTermPayment, isPaymentCurrent, getCurrentTerm } = useAppContext();
 
   const [terminalCohort, setTerminalCohort] = useState('');
   const [studentIdInput, setStudentIdInput] = useState('');
@@ -50,20 +50,35 @@ export default function StudentKioskScreen() {
 
     const profile = students[studentIdInput];
     if (profile) {
-      const profileCohort = profile.cohort ?? profile.class ?? 1;
-      const courseCohort = activeCourseObj.cohort ?? 1;
-      const isCompatible = isYearCompatible(profileCohort, courseCohort);
+      let profileCohort = String(profile.class || profile.cohort || '').trim();
+      const courseCohort = String(activeCourseObj.cohort || '');
 
-      if (!isCompatible) {
+      // Standardize: If the student's record has a label (e.g. "SYM") instead of an ID ("3"),
+      // resolve it to the ID so it matches the session's cohort ID.
+      if (sysConfig.cohorts) {
+        const matchedEntry = Object.entries(sysConfig.cohorts).find(
+          ([id, label]) => String(label).toLowerCase() === profileCohort.toLowerCase()
+        );
+        if (matchedEntry) {
+          profileCohort = matchedEntry[0];
+        }
+      }
+
+      const studentClassLabel = sysConfig.cohorts[profileCohort] || profileCohort || 'Unknown';
+      const sessionClassLabel = sysConfig.cohorts[courseCohort] || courseCohort || 'Unknown';
+
+      // Enforce strict class/cohort matching
+      if (profileCohort !== courseCohort) {
         return {
-          text: `${profile.name} is ${getYearLabelFromCohort(profileCohort)} and cannot register for ${getYearLabelFromCohort(courseCohort)} courses.`,
+          text: `${profile.name} belongs to ${studentClassLabel} and cannot register for ${sessionClassLabel} sessions.`,
           status: 'error'
         };
       }
 
-      if (!hasFullTermPayment(studentIdInput)) {
+      if (!isPaymentCurrent(studentIdInput)) {
+        const currentTerm = getCurrentTerm();
         return {
-          text: `${profile.name} has not completed payment for all 4 terms. Attendance blocked.`,
+          text: `${profile.name} has not completed payment for ${currentTerm ? `Term ${currentTerm}` : 'the current term'}. Attendance blocked.`,
           status: 'error'
         };
       }
@@ -277,7 +292,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800', color: Colors.slate900 },
   logoutBtn: { backgroundColor: '#f1f5f9', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.lg },
   logoutBtnText: { fontSize: 12, fontWeight: 'bold', color: '#64748b' },
-  main: { padding: Spacing.xl, gap: Spacing.xl },
+ main: {
+   flex: 1,
+   paddingHorizontal: Spacing.lg,
+   paddingTop: Spacing.md,
+   paddingBottom: Spacing.lg,
+ },
   section: { gap: Spacing.sm },
   label: { fontSize: 14, fontWeight: '600', color: Colors.primary },
   cohortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },

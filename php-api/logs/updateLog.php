@@ -1,11 +1,5 @@
 <?php
-
 require_once __DIR__ . '/../config/Api.php';
-
-if (getRequestMethod() !== 'PUT') {
-    sendJson(['success' => false, 'message' => 'Method not allowed'], 405);
-    exit;
-}
 
 $data = readJsonInput();
 $id = (int) ($data['id'] ?? 0);
@@ -20,27 +14,10 @@ $time = sanitizeText($data['time'] ?? '');
 
 if ($id <= 0) {
     sendJson(['success' => false, 'message' => 'A valid record id is required'], 400);
-    exit;
 }
 
 try {
-    $db = new Database();
-    $conn = $db->connect();
-
-    $conn->exec(
-        'CREATE TABLE IF NOT EXISTS rhema_attendance_records (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            student_id VARCHAR(50) NOT NULL,
-            name VARCHAR(255) NOT NULL,
-            course VARCHAR(255) NOT NULL,
-            schedule_id VARCHAR(100) DEFAULT NULL,
-            session_cohort VARCHAR(50) DEFAULT NULL,
-            profile_cohort VARCHAR(50) DEFAULT NULL,
-            date VARCHAR(20) NOT NULL,
-            time VARCHAR(20) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-    );
+    $conn = getDBConnection();
 
     $stmt = $conn->prepare('UPDATE rhema_attendance_records SET student_id = :student_id, name = :name, course = :course, schedule_id = :schedule_id, session_cohort = :session_cohort, profile_cohort = :profile_cohort, date = :date, time = :time WHERE id = :id');
     $stmt->execute([
@@ -57,5 +34,5 @@ try {
 
     sendJson(['success' => true, 'message' => 'Record updated']);
 } catch (Throwable $e) {
-    sendJson(['success' => false, 'message' => 'Could not update attendance record'], 500);
+    sendJson(['success' => false, 'message' => $e->getMessage()], 500);
 }
