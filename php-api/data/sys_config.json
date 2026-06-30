@@ -1,0 +1,36 @@
+{
+    "themeMode": "light",
+    "primaryColor": "#3b82f6",
+    "textCustoms": {
+        "lbl-gate-title": "Rhema Class Attendance",
+        "lbl-gate-subtitle": "Secure checkpoint management console & kiosk logger",
+        "lbl-gate-student-card-title": "Student Check-In Kiosk",
+        "lbl-gate-admin-card-title": "System Administrator",
+        "lbl-sidebar-brand-title": "Rhema Console",
+        "lbl-terminal-title": "Rhema Check-In Terminal"
+    },
+    "cohorts": {
+        "1": "FYM",
+        "2": "FYE",
+        "3": "SYM",
+        "4": "SYE"
+    },
+    "terms": {
+        "1": {
+            "start": "2026-01-12",
+            "end": "2026-03-27"
+        },
+        "2": {
+            "start": "2024-04-01",
+            "end": "2024-06-30"
+        },
+        "3": {
+            "start": "2026-06-22",
+            "end": "2026-07-23"
+        },
+        "4": {
+            "start": "2024-10-01",
+            "end": "2024-12-31"
+        }
+    }
+}

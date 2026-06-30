@@ -7,55 +7,69 @@ class Database {
     private string $user;
     private string $pass;
     private string $charset;
+    private bool $debug;
 
     public function __construct() {
-        // Use environment variables or Hostinger defaults
         $this->host = getenv('DB_HOST') ?: 'localhost';
-
-        // Hostinger User
-        $this->user = getenv('DB_USER') ?: 'u164973018_rhamazambia';
-
-        // Hostinger Database
-        $this->db   = getenv('DB_NAME') ?: 'u164973018_rhema_inhouse';
-
-        // IMPORTANT: Fill your database password here or set DB_PASS environment variable
+        $this->user = getenv('DB_USER') ?: 'root';
+        $this->db   = getenv('DB_NAME') ?: 'rhema_inhouse';
         $this->pass = getenv('DB_PASS') ?: '';
-
         $this->charset = 'utf8mb4';
+
+        // Enable debug only if explicitly set
+        $this->debug = getenv('APP_DEBUG') === 'true';
+
+        if (empty($this->user) || empty($this->db)) {
+            throw new Exception("Database configuration missing (DB_USER or DB_NAME).");
+        }
     }
 
     public function connect(): PDO {
         $dsn = "mysql:host={$this->host};dbname={$this->db};charset={$this->charset}";
 
         $options = [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_EMULATE_PREPARES   => false,
         ];
 
         try {
             $pdo = new PDO($dsn, $this->user, $this->pass, $options);
 
-            // Optional: Auto-create tables if they don't exist
+            // Initialize tables safely
             $this->initialize($pdo);
 
             return $pdo;
+
         } catch (PDOException $e) {
-            // Send back a clean error if database connection fails
-            header('Content-Type: application/json');
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Database connection failed',
-                'error' => $e->getMessage()
-            ]);
+
+            if ($this->debug) {
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Database connection failed',
+                    'error'   => $e->getMessage()
+                ]);
+            } else {
+                error_log("DB Connection Error: " . $e->getMessage());
+
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Database connection failed'
+                ]);
+            }
+
             exit;
         }
     }
 
     private function initialize(PDO $pdo): void {
-        // Tables list as previously defined
+
         $queries = [
+
             "CREATE TABLE IF NOT EXISTS students (
                 student_id VARCHAR(50) PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
@@ -133,12 +147,20 @@ class Database {
         foreach ($queries as $query) {
             try {
                 $pdo->exec($query);
-            } catch (Exception $e) {}
+            } catch (PDOException $e) {
+                error_log("DB Init Error: " . $e->getMessage());
+            }
         }
     }
 }
 
 function getDBConnection(): PDO {
-    $db = new Database();
-    return $db->connect();
+    static $db = null;
+
+    if ($db === null) {
+        $database = new Database();
+        $db = $database->connect();
+    }
+
+    return $db;
 }

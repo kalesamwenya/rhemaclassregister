@@ -1,43 +1,42 @@
-// FILE: api.ts
+import axios, {
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from "axios";
 
-import axios from "axios";
-
-// Fallback URL if EXPO_PUBLIC_API_URL is missing
+// Fallback API URL
 const fallbackURL = "http://attendance.rhemazambia.com";
 
-// Use environment variable or fallback
-const rawBaseURL =
-  process.env.EXPO_PUBLIC_API_URL?.trim() || fallbackURL;
-
+const baseURL = process.env.EXPO_PUBLIC_API_URL || fallbackURL;
+// const baseURL = fallbackURL;
 /**
  * Normalize URL:
- * - remove extra trailing slashes
- * - ensure exactly one trailing slash
+ * - Remove extra trailing slashes
+ * - Add one final slash
  */
-const normalizeBaseURL = (url: string): string => {
+const getFinalBaseURL = (url: string): string => {
   return url.replace(/\/+$/, "") + "/";
 };
 
 const api = axios.create({
-  baseURL: normalizeBaseURL(rawBaseURL),
-
+  baseURL: getFinalBaseURL(baseURL),
+  timeout: 15000,
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
   },
-
-  timeout: 15000,
 });
 
-// REQUEST INTERCEPTOR
+/**
+ * REQUEST INTERCEPTOR
+ */
 api.interceptors.request.use(
-  (config) => {
-    // Remove leading slash from endpoint
-    if (config.url?.startsWith("/")) {
-      config.url = config.url.slice(1);
+  (config: InternalAxiosRequestConfig) => {
+    // Remove leading slash to prevent //
+    if (config.url) {
+      config.url = config.url.replace(/^\/+/, "");
     }
 
-    const fullUrl = `${config.baseURL}${config.url}`;
+    const fullUrl = `${config.baseURL ?? ""}${config.url ?? ""}`;
 
     console.log(
       `[API] ${config.method?.toUpperCase()} ${fullUrl}`
@@ -46,31 +45,37 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.log("[REQUEST ERROR]", error.message);
+    console.log(
+      "[REQUEST ERROR]",
+      error?.message
+    );
+
     return Promise.reject(error);
   }
 );
 
-// RESPONSE INTERCEPTOR
+/**
+ * RESPONSE INTERCEPTOR
+ */
 api.interceptors.response.use(
-  (response) => {
-    console.log(
-      `[API SUCCESS] ${response.status}: ${response.config.url}`
-    );
+  (response) => response,
 
-    return response;
-  },
-  (error) => {
-    if (error.code === "ECONNABORTED") {
-      console.log("[API ERROR] Request timeout");
-    } else if (!error.response) {
-      console.log("[API ERROR] Network unavailable");
-    } else {
+  (error: AxiosError<any>) => {
+    if (error.response) {
       console.log(
         "[API ERROR]",
         error.response.data ||
-          error.response.status ||
-          error.message
+          error.response.status
+      );
+    } else if (error.request) {
+      console.log(
+        "[NETWORK ERROR]",
+        "Server unreachable"
+      );
+    } else {
+      console.log(
+        "[UNKNOWN ERROR]",
+        error.message
       );
     }
 

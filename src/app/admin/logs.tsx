@@ -86,9 +86,8 @@ export default function AdminLogsScreen() {
       `"${getLogField(l, 'student_id', 'studentId')}","${getLogField(l, 'name')}","${getLogField(l, 'course')}","${sysConfig.cohorts[getLogField(l, 'session_cohort', 'sessionCohort')] || ''}","${sysConfig.cohorts[getLogField(l, 'profile_cohort', 'profileCohort')] || ''}","${getLogField(l, 'date')}","${getLogField(l, 'time')}"`
     ).join('\n');
 
-    // Add UTF-8 BOM for Excel compatibility
-    const csvContent = "\uFEFF" + header + rows;
-    const fileName = `Attendance_Log_Export.csv`;
+    const csvContent = header + rows;
+    const fileName = `Attendance_Log_Filtered.csv`;
 
     if (Platform.OS === 'web') {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -103,7 +102,7 @@ export default function AdminLogsScreen() {
     } else {
       try {
         const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystem.writeAsStringAsync(fileUri, csvContent);
         await Sharing.shareAsync(fileUri);
       } catch (e) {
         Alert.alert('Error', 'Failed to export logs');
@@ -119,42 +118,24 @@ export default function AdminLogsScreen() {
     const selectedTrack = schedule.find(s => s.id === exportCourseFilter);
     if (!selectedTrack) return;
 
-    // 1. Get all students that belong to this track's cohort
-    const trackCohort = String(selectedTrack.cohort);
-    const studentsInCohort = Object.values(students).filter(s => String(s.cohort) === trackCohort);
-
-    // 2. Also include students who are explicitly enrolled in this specific track
     const enrolledIds = courseEnrollments[selectedTrack.id] || [];
-    const enrolledStudents = enrolledIds.map(id => students[id]).filter(Boolean);
-
-    // Merge and deduplicate
-    const studentMap: Record<string, any> = {};
-    [...studentsInCohort, ...enrolledStudents].forEach(s => {
-      studentMap[String(s.id)] = s;
-    });
-
-    const finalStudentList = Object.values(studentMap).sort((a, b) => a.name.localeCompare(b.name));
-
-    if (finalStudentList.length === 0) {
-      Alert.alert('No Students', 'No students found in this cohort or track.');
+    if (enrolledIds.length === 0) {
+      Alert.alert('No Enrollment', 'No students are registered for this specific track.');
       return;
     }
 
-    // 3. Get all unique dates where attendance was recorded for this track
     const targetLogs = attendanceLogs.filter(l => getLogField(l, 'schedule_id', 'scheduleId') === selectedTrack.id);
     const uniqueDates = [...new Set(targetLogs.map(l => getLogField(l, 'date')))].sort();
 
     let csv = `Module,${selectedTrack.course}\n`;
-    csv += `Group,${sysConfig.cohorts[selectedTrack.cohort] || 'Unknown'}\n`;
-    csv += `Generated,${new Date().toLocaleString()}\n\n`;
+    csv += `Group,${sysConfig.cohorts[selectedTrack.cohort] || 'Unknown'}\n\n`;
     csv += 'Student ID,Name,Cohort,' + uniqueDates.join(',') + '\n';
 
-    finalStudentList.forEach(student => {
-      const sid = String(student.id);
-      let row = `"${sid}","${student.name}","${sysConfig.cohorts[student.cohort] || student.cohort}"`;
-
+    enrolledIds.forEach(sid => {
+      const profile = students[sid] || { name: 'Unknown', cohort: '1' };
+      let row = `"${sid}","${profile.name}","${sysConfig.cohorts[profile.cohort]}"`;
       uniqueDates.forEach(date => {
-        const attended = targetLogs.some(l => String(getLogField(l, 'student_id', 'studentId')) === sid && getLogField(l, 'date') === date);
+        const attended = targetLogs.some(l => getLogField(l, 'student_id', 'studentId') === sid && getLogField(l, 'date') === date);
         row += attended ? ',1' : ',0';
       });
       csv += row + '\n';
@@ -162,11 +143,8 @@ export default function AdminLogsScreen() {
 
     try {
       const fileName = `${selectedTrack.course.replace(/[^a-z0-9]/gi, '_')}_Matrix.csv`;
-      // Add UTF-8 BOM for Excel
-      const csvWithBOM = "\uFEFF" + csv;
-
       if (Platform.OS === 'web') {
-        const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -177,7 +155,7 @@ export default function AdminLogsScreen() {
         URL.revokeObjectURL(url);
       } else {
         const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csvWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystem.writeAsStringAsync(fileUri, csv);
         await Sharing.shareAsync(fileUri);
       }
     } catch (e) {
@@ -191,22 +169,11 @@ export default function AdminLogsScreen() {
       return;
     }
 
-    let fullCsv = 'ATTENDANCE MASTER REGISTRY\n';
-    fullCsv += `Generated,${new Date().toLocaleString()}\n\n`;
+    let fullCsv = 'ATTENDANCE MASTER REGISTRY\n\n';
 
     schedule.forEach(track => {
-      const trackCohort = String(track.cohort);
-      const studentsInCohort = Object.values(students).filter(s => String(s.cohort) === trackCohort);
       const enrolledIds = courseEnrollments[track.id] || [];
-      const enrolledStudents = enrolledIds.map(id => students[id]).filter(Boolean);
-
-      const studentMap: Record<string, any> = {};
-      [...studentsInCohort, ...enrolledStudents].forEach(s => {
-        studentMap[String(s.id)] = s;
-      });
-      const finalStudentList = Object.values(studentMap).sort((a, b) => a.name.localeCompare(b.name));
-
-      if (finalStudentList.length === 0) return;
+      if (enrolledIds.length === 0) return;
 
       const targetLogs = attendanceLogs.filter(l => getLogField(l, 'schedule_id', 'scheduleId') === track.id);
       const uniqueDates = [...new Set(targetLogs.map(l => getLogField(l, 'date')))].sort();
@@ -214,11 +181,11 @@ export default function AdminLogsScreen() {
       fullCsv += `MODULE: ${track.course} (${sysConfig.cohorts[track.cohort]})\n`;
       fullCsv += 'Student ID,Name,Cohort,' + uniqueDates.join(',') + '\n';
 
-      finalStudentList.forEach(student => {
-        const sid = String(student.id);
-        let row = `"${sid}","${student.name}","${sysConfig.cohorts[student.cohort] || student.cohort}"`;
+      enrolledIds.forEach(sid => {
+        const profile = students[sid] || { name: 'Unknown', cohort: '1' };
+        let row = `"${sid}","${profile.name}","${sysConfig.cohorts[profile.cohort]}"`;
         uniqueDates.forEach(date => {
-          const attended = targetLogs.some(l => String(getLogField(l, 'student_id', 'studentId')) === sid && getLogField(l, 'date') === date);
+          const attended = targetLogs.some(l => getLogField(l, 'student_id', 'studentId') === sid && getLogField(l, 'date') === date);
           row += attended ? ',1' : ',0';
         });
         fullCsv += row + '\n';
@@ -228,10 +195,8 @@ export default function AdminLogsScreen() {
 
     try {
       const fileName = 'Master_Attendance_Registry.csv';
-      const csvWithBOM = "\uFEFF" + fullCsv;
-
       if (Platform.OS === 'web') {
-        const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob([fullCsv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -242,7 +207,7 @@ export default function AdminLogsScreen() {
         URL.revokeObjectURL(url);
       } else {
         const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csvWithBOM, { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystem.writeAsStringAsync(fileUri, fullCsv);
         await Sharing.shareAsync(fileUri);
       }
     } catch (e) {
