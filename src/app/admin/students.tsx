@@ -3,40 +3,40 @@ import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
-  AlertTriangle,
-  ArrowLeft,
-  CheckSquare,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  FileSpreadsheet,
-  Pencil,
-  Plus,
-  Search,
-  Square,
-  Trash2,
-  Users,
-  X,
+    AlertTriangle,
+    ArrowLeft,
+    CheckSquare,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    FileSpreadsheet,
+    Pencil,
+    Plus,
+    Search,
+    Square,
+    Trash2,
+    Users,
+    X,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  FlatList,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Dimensions,
+    FlatList,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, {
-  FadeInDown,
-  Layout,
-  SlideInRight,
+    FadeInDown,
+    Layout,
+    SlideInRight,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
@@ -183,6 +183,43 @@ export default function AdminStudentsScreen() {
 
   const totalPages = Math.max(1, Math.ceil(allRows.length / pageSize));
 
+  const exportCsvContent = async (csvContent: string, fileName: string) => {
+    if (Platform.OS === "web") {
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    try {
+      const directory =
+        FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const fileUri = `${directory}${fileName}`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      const isShareAvailable = await Sharing.isAvailableAsync();
+      if (isShareAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/csv",
+          dialogTitle: `Export ${fileName}`,
+        });
+      } else {
+        Alert.alert("Saved", `CSV was written to ${fileUri}`);
+      }
+    } catch (e) {
+      console.error("CSV export failed:", e);
+      Alert.alert("Error", "Failed to export students");
+    }
+  };
+
   const exportStudentsCSV = async () => {
     if (allRows.length === 0) {
       Alert.alert("No Data", "No students match your selection.");
@@ -199,38 +236,22 @@ export default function AdminStudentsScreen() {
 
     const csvContent = header + rows;
     const fileName = `Student_Registry.csv`;
-
-    if (Platform.OS === "web") {
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } else {
-      try {
-        const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csvContent);
-        await Sharing.shareAsync(fileUri);
-      } catch (e) {
-        Alert.alert("Error", "Failed to export students");
-      }
-    }
+    await exportCsvContent(csvContent, fileName);
   };
 
   const handleBulkCSVImport = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "text/comma-separated-values",
+        type: ["text/csv", "application/vnd.ms-excel", "text/plain"],
+        copyToCacheDirectory: true,
       });
-      if (result.canceled) return;
+      if (result.canceled || !result.assets?.length) return;
 
       setIsProcessing(true);
       const fileUri = result.assets[0].uri;
-      const csvText = await FileSystem.readAsStringAsync(fileUri);
+      const csvText = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
 
       const lines = csvText.split(/\r?\n/);
       const studentsToImport: any[] = [];

@@ -2,32 +2,32 @@ import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
-  AlertTriangle,
-  ArrowLeft,
-  BarChart,
-  ChevronRight,
-  Download,
-  FileSpreadsheet,
-  Filter,
-  Layers,
-  Trash2,
+    AlertTriangle,
+    ArrowLeft,
+    BarChart,
+    ChevronRight,
+    Download,
+    FileSpreadsheet,
+    Filter,
+    Layers,
+    Trash2,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
-  Alert,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, {
-  FadeInDown,
-  Layout,
-  SlideInRight,
+    FadeInDown,
+    Layout,
+    SlideInRight,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
@@ -115,6 +115,43 @@ export default function AdminLogsScreen() {
     return grouped;
   }, [attendanceLogs, logFilterCourse, logFilterCohort]);
 
+  const exportCsvContent = async (csvContent: string, fileName: string) => {
+    if (Platform.OS === "web") {
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    try {
+      const directory =
+        FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+      const fileUri = `${directory}${fileName}`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      const isShareAvailable = await Sharing.isAvailableAsync();
+      if (isShareAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/csv",
+          dialogTitle: `Export ${fileName}`,
+        });
+      } else {
+        Alert.alert("Saved", `CSV was written to ${fileUri}`);
+      }
+    } catch (e) {
+      console.error("CSV export failed:", e);
+      Alert.alert("Error", "Failed to export logs");
+    }
+  };
+
   const exportFilteredLogsCSV = async () => {
     // Get all attendance data (empty logs should still export all students)
     const coursesToExport = [...new Set(attendanceLogs.map((l) => l.course))]
@@ -193,21 +230,7 @@ export default function AdminLogsScreen() {
 
     try {
       const fileName = `Attendance_Report_${new Date().toISOString().split("T")[0]}.csv`;
-      if (Platform.OS === "web") {
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      } else {
-        const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csv);
-        await Sharing.shareAsync(fileUri);
-      }
+      await exportCsvContent(csv, fileName);
     } catch (e) {
       Alert.alert("Error", "Failed to export logs");
     }
@@ -265,21 +288,7 @@ export default function AdminLogsScreen() {
 
     try {
       const fileName = `${selectedTrack.course.replace(/[^a-z0-9]/gi, "_")}_Matrix.csv`;
-      if (Platform.OS === "web") {
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      } else {
-        const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csv);
-        await Sharing.shareAsync(fileUri);
-      }
+      await exportCsvContent(csv, fileName);
     } catch (e) {
       Alert.alert("Error", "Failed to export matrix");
     }
@@ -336,21 +345,7 @@ export default function AdminLogsScreen() {
 
     try {
       const fileName = "Master_Attendance_Registry.csv";
-      if (Platform.OS === "web") {
-        const blob = new Blob([fullCsv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      } else {
-        const fileUri = FileSystem.cacheDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, fullCsv);
-        await Sharing.shareAsync(fileUri);
-      }
+      await exportCsvContent(fullCsv, fileName);
     } catch (e) {
       Alert.alert("Error", "Failed to export bulk registry");
     }
