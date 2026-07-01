@@ -42,6 +42,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
 import { useAppContext } from "../../context/AppContext";
 
+import { bulkCreateStudents } from "@/services/studentService";
 import SplashScreen from "../../components/SplashScreen";
 
 const { width } = Dimensions.get("window");
@@ -251,69 +252,70 @@ export default function AdminStudentsScreen() {
       setIsProcessing(true);
       const fileUri = result.assets[0].uri;
 
-      // Use "utf8" as a string to maintain compatibility with legacy FileSystem
       const csvText = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: "utf8" as any,
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
-      const lines = csvText.split(/\r?\n/);
+      // 1. Improved CSV parsing using Regex to handle commas inside quotes
+      const lines = csvText.split(/\r?\n/).filter((line) => line.trim() !== "");
       const studentsToImport: any[] = [];
 
-      // Parsing Logic
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.trim()) continue;
-        const columns = line.split(",");
-        if (columns.length >= 2) {
-          const rawId = columns[0].trim().replace(/["']/g, "");
-          const rawName = columns[1].trim().replace(/["']/g, "");
-          let rawCohortText =
-            columns.length >= 3 ? columns[2].trim().toLowerCase() : "1";
+        // Skip header row
+        if (i === 0 && lines[i].toLowerCase().includes("id")) continue;
 
-          if (i === 0 && rawId.toLowerCase().includes("id")) continue;
+        // Regex to split by comma, ignoring commas within quotes
+        const columns =
+          lines[i]
+            .match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)
+            ?.map((col) => col.replace(/^"|"$/g, "").trim()) || [];
 
-          let det = 1;
-          // Safety check on sysConfig access
-          const cohort2 = sysConfig?.cohorts?.[2]?.toLowerCase() || "";
-          const cohort4 = sysConfig?.cohorts?.[4]?.toLowerCase() || "";
+        if (columns.length < 2) continue;
 
-          if (
-            rawCohortText.includes("evening") ||
-            rawCohortText.includes("eve") ||
-            (cohort2 && rawCohortText.includes(cohort2)) ||
-            (cohort4 && rawCohortText.includes(cohort4))
-          ) {
-            det =
-              rawCohortText.includes("second") ||
-              rawCohortText.includes("2nd") ||
-              rawCohortText.includes("y2")
-                ? 4
-                : 2;
-          } else if (
-            rawCohortText.includes("second") ||
-            rawCohortText.includes("2nd") ||
-            rawCohortText.includes("y2")
-          ) {
-            det = 3;
-          }
+        const [rawId, rawName, rawCohortText = "1"] = columns;
 
-          if (rawId && rawName) {
-            studentsToImport.push({
-              id: rawId,
-              name: rawName,
-              cohort: sysConfig?.cohorts?.[det] || String(det),
-              class: det,
-            });
-          }
+        let det = 1;
+        const cohort2 = sysConfig?.cohorts?.[2]?.toLowerCase() || "";
+        const cohort4 = sysConfig?.cohorts?.[4]?.toLowerCase() || "";
+        const isSecond =
+          rawCohortText.includes("second") ||
+          rawCohortText.includes("2nd") ||
+          rawCohortText.includes("y2");
+
+        if (
+          rawCohortText.includes("evening") ||
+          rawCohortText.includes("eve") ||
+          (cohort2 && rawCohortText.includes(cohort2)) ||
+          (cohort4 && rawCohortText.includes(cohort4))
+        ) {
+          det = isSecond ? 4 : 2;
+        } else if (isSecond) {
+          det = 3;
         }
+
+        studentsToImport.push({
+          id: rawId,
+          name: rawName,
+          cohort: sysConfig?.cohorts?.[det] || String(det),
+          class: det,
+        });
       }
 
-      // API Registration
-      if (studentsToImport.length > 0) {
-        await bulkRegisterStudents(studentsToImport);
+      // 2. API Registration with proper error propagation
+      // Inside handleBulkCSVImport in your component
+      try {
+        // Pass sysConfig as the second argument
+        const response = await bulkCreateStudents(studentsToImport, sysConfig);
+
+        if (!response.success) {
+          throw new Error(response.message || "Failed to register students");
+        }
+      } catch (apiError: any) {
+        console.error("API call failed:", apiError);
+        throw apiError;
       }
 
-      // Sync Local State
+      // 3. Sync Local State
       const allStudentsMap = { ...students };
       studentsToImport.forEach((s) => {
         allStudentsMap[s.id] = s;
@@ -323,16 +325,8 @@ export default function AdminStudentsScreen() {
       schedule.forEach((slot) => {
         if (!updatedEnrollments[slot.id]) updatedEnrollments[slot.id] = [];
         Object.keys(allStudentsMap).forEach((id) => {
-          let studentCohortNumeric = allStudentsMap[id].cohort;
-
-          if (typeof studentCohortNumeric === "string") {
-            const found = Object.entries(sysConfig?.cohorts || {}).find(
-              ([_, name]) => name === studentCohortNumeric,
-            );
-            studentCohortNumeric = found
-              ? found[0]
-              : String(studentCohortNumeric);
-          }
+          const student = allStudentsMap[id];
+          const studentCohortNumeric = student.class;
 
           if (
             parseInt(String(studentCohortNumeric)) === parseInt(slot.cohort)
@@ -346,14 +340,12 @@ export default function AdminStudentsScreen() {
 
       await saveAllEnrollments(updatedEnrollments);
       setIsProcessing(false);
-      Alert.alert(
-        "Success",
-        `Import complete. Synced ${studentsToImport.length} students to API.`,
-      );
-    } catch (error) {
+      Alert.alert("Success", `Imported ${studentsToImport.length} students.`);
+    } catch (error: any) {
       console.error("Import error:", error);
       setIsProcessing(false);
-      Alert.alert("Error", "Failed to process CSV file.");
+      const msg = error.message || "Failed to process CSV file.";
+      Alert.alert("Error", msg);
     }
   };
 

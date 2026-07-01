@@ -1,5 +1,6 @@
 // FILE: studentServices.ts
-import * as FileSystem from "expo-file-system";
+import axios from "axios";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import api from "./api";
 
@@ -91,15 +92,31 @@ export async function deleteStudent(studentId: string | number) {
   }
 }
 
-export async function bulkCreateStudents(students: Student[]) {
+export async function bulkCreateStudents(students: Student[], config: any) {
   try {
+    // Mapping payload for PHP consistency
     const payload = {
-      students: students.map(mapToApi)
+      students: students.map((s) => ({
+        student_id: String(s.id),
+        name: String(s.name),
+        class: String(s.cohort),
+        payment_status: s.payment_status || "Pending",
+      })),
     };
-    const { data } = await api.post("/students/bulkAddStudents.php", payload);
+
+    // Use the base URL from your 'api' instance, or if you need to use
+    // the 'config.apiUrl' dynamically, ensure your axios instance is configured to use it.
+    const { data } = await axios.post(
+      `${config.apiUrl}/students/bulkAddStudents.php`,
+      payload,
+    );
+
     return data;
   } catch (err: any) {
-    console.error("Bulk create students error:", err.response?.data || err.message);
+    console.error(
+      "Bulk create students error:",
+      err.response?.data || err.message,
+    );
     throw err;
   }
 }
@@ -111,7 +128,10 @@ export async function bulkDeleteStudents(studentIds: string[]) {
     });
     return data;
   } catch (err: any) {
-    console.error("Bulk delete students error:", err.response?.data || err.message);
+    console.error(
+      "Bulk delete students error:",
+      err.response?.data || err.message,
+    );
     throw err;
   }
 }

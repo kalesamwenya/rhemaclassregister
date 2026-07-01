@@ -32,8 +32,6 @@ import {
   getStudents as getStudentsFromApi,
   updateStudent,
 } from "../services/studentService";
-const [alertModalVisible, setAlertModalVisible] = useState(false);
-const [activeAlert, setActiveAlert] = useState<any>(null);
 
 interface AppContextType {
   students: Record<string, any>;
@@ -96,6 +94,8 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [alertModalVisible, setAlertModalVisible] = useState(false);
+  const [activeAlert, setActiveAlert] = useState<any>(null);
   const systemColorScheme = useColorScheme();
   const [students, setStudents] = useState<Record<string, any>>({});
   const [schedule, setSchedule] = useState<any[]>([]);
@@ -414,8 +414,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("Failed to register student on API", err);
     }
   };
-
+  // Ensure this is inside your Functional Component body
   const bulkRegisterStudents = async (studentsList: any[]) => {
+    // 1. Prepare local state updates
     const nextStudents = { ...students };
     const nextPaymentStatus = { ...paymentStatus };
 
@@ -426,14 +427,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       nextPaymentStatus[idStr] = pStatus;
     });
 
+    // 2. Perform React State updates (These MUST be called in a component)
     setStudents(nextStudents);
     setPaymentStatus(nextPaymentStatus);
+
+    // 3. Perform asynchronous side effects
     await AsyncStorage.setItem("rhema_students", JSON.stringify(nextStudents));
     await AsyncStorage.setItem(
       "rhema_payment_status",
       JSON.stringify(nextPaymentStatus),
     );
 
+    // 4. API call (Decoupled from state)
     try {
       const studentsWithPayment = studentsList.map((s) => ({
         student_id: String(s.id),
@@ -441,6 +446,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         class: s.cohort,
         payment_status: nextPaymentStatus[String(s.id)] || "Pending",
       }));
+
+      // Call the external service function
       await bulkCreateStudents(studentsWithPayment);
     } catch (e) {
       console.error("Bulk registration failed on API", e);
