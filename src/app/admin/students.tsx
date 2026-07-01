@@ -1,42 +1,42 @@
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
-    AlertTriangle,
-    ArrowLeft,
-    CheckSquare,
-    ChevronLeft,
-    ChevronRight,
-    Download,
-    FileSpreadsheet,
-    Pencil,
-    Plus,
-    Search,
-    Square,
-    Trash2,
-    Users,
-    X,
+  AlertTriangle,
+  ArrowLeft,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  Pencil,
+  Plus,
+  Search,
+  Square,
+  Trash2,
+  Users,
+  X,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    FlatList,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  FlatList,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Animated, {
-    FadeInDown,
-    Layout,
-    SlideInRight,
+  FadeInDown,
+  Layout,
+  SlideInRight,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
@@ -245,17 +245,21 @@ export default function AdminStudentsScreen() {
         type: ["text/csv", "application/vnd.ms-excel", "text/plain"],
         copyToCacheDirectory: true,
       });
+
       if (result.canceled || !result.assets?.length) return;
 
       setIsProcessing(true);
       const fileUri = result.assets[0].uri;
+
+      // Use "utf8" as a string to maintain compatibility with legacy FileSystem
       const csvText = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: "utf8" as any,
       });
 
       const lines = csvText.split(/\r?\n/);
       const studentsToImport: any[] = [];
 
+      // Parsing Logic
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line.trim()) continue;
@@ -269,11 +273,15 @@ export default function AdminStudentsScreen() {
           if (i === 0 && rawId.toLowerCase().includes("id")) continue;
 
           let det = 1;
+          // Safety check on sysConfig access
+          const cohort2 = sysConfig?.cohorts?.[2]?.toLowerCase() || "";
+          const cohort4 = sysConfig?.cohorts?.[4]?.toLowerCase() || "";
+
           if (
             rawCohortText.includes("evening") ||
             rawCohortText.includes("eve") ||
-            rawCohortText.includes(sysConfig.cohorts[2].toLowerCase()) ||
-            rawCohortText.includes(sysConfig.cohorts[4].toLowerCase())
+            (cohort2 && rawCohortText.includes(cohort2)) ||
+            (cohort4 && rawCohortText.includes(cohort4))
           ) {
             det =
               rawCohortText.includes("second") ||
@@ -288,22 +296,24 @@ export default function AdminStudentsScreen() {
           ) {
             det = 3;
           }
+
           if (rawId && rawName) {
             studentsToImport.push({
               id: rawId,
               name: rawName,
-              cohort: sysConfig.cohorts[det] || String(det), // Convert numeric to cohort name string
-              class: det, // Keep numeric for API
+              cohort: sysConfig?.cohorts?.[det] || String(det),
+              class: det,
             });
           }
         }
       }
 
+      // API Registration
       if (studentsToImport.length > 0) {
         await bulkRegisterStudents(studentsToImport);
       }
 
-      // Merge current local state with imported data for immediate enrollment syncing
+      // Sync Local State
       const allStudentsMap = { ...students };
       studentsToImport.forEach((s) => {
         allStudentsMap[s.id] = s;
@@ -313,33 +323,35 @@ export default function AdminStudentsScreen() {
       schedule.forEach((slot) => {
         if (!updatedEnrollments[slot.id]) updatedEnrollments[slot.id] = [];
         Object.keys(allStudentsMap).forEach((id) => {
-          // Handle both string cohorts (e.g., "FYM") and numeric (e.g., 1)
           let studentCohortNumeric = allStudentsMap[id].cohort;
+
           if (typeof studentCohortNumeric === "string") {
-            // Map cohort name back to numeric ID
-            const found = Object.entries(sysConfig.cohorts).find(
+            const found = Object.entries(sysConfig?.cohorts || {}).find(
               ([_, name]) => name === studentCohortNumeric,
             );
             studentCohortNumeric = found
               ? found[0]
               : String(studentCohortNumeric);
           }
+
           if (
             parseInt(String(studentCohortNumeric)) === parseInt(slot.cohort)
           ) {
-            if (!updatedEnrollments[slot.id].includes(id))
+            if (!updatedEnrollments[slot.id].includes(id)) {
               updatedEnrollments[slot.id].push(id);
+            }
           }
         });
       });
-      await saveAllEnrollments(updatedEnrollments);
 
+      await saveAllEnrollments(updatedEnrollments);
       setIsProcessing(false);
       Alert.alert(
         "Success",
         `Import complete. Synced ${studentsToImport.length} students to API.`,
       );
     } catch (error) {
+      console.error("Import error:", error);
       setIsProcessing(false);
       Alert.alert("Error", "Failed to process CSV file.");
     }

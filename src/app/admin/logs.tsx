@@ -1,33 +1,33 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
-    AlertTriangle,
-    ArrowLeft,
-    BarChart,
-    ChevronRight,
-    Download,
-    FileSpreadsheet,
-    Filter,
-    Layers,
-    Trash2,
+  AlertTriangle,
+  ArrowLeft,
+  BarChart,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  Filter,
+  Layers,
+  Trash2,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
-    Alert,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Animated, {
-    FadeInDown,
-    Layout,
-    SlideInRight,
+  FadeInDown,
+  Layout,
+  SlideInRight,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
@@ -133,18 +133,20 @@ export default function AdminLogsScreen() {
       const directory =
         FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
       const fileUri = `${directory}${fileName}`;
+
+      // Now using the legacy imported FileSystem
       await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: "utf8" as any, // Using string literal is safer for legacy wrappers
       });
 
-      const isShareAvailable = await Sharing.isAvailableAsync();
-      if (isShareAvailable) {
+      if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: "text/csv",
           dialogTitle: `Export ${fileName}`,
+          UTI: "public.comma-separated-values-text",
         });
       } else {
-        Alert.alert("Saved", `CSV was written to ${fileUri}`);
+        Alert.alert("Saved", `CSV written to ${fileUri}`);
       }
     } catch (e) {
       console.error("CSV export failed:", e);
