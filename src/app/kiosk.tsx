@@ -8,12 +8,11 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BorderRadius, Colors, Spacing } from "../constants/Theme";
@@ -43,7 +42,10 @@ export default function StudentKioskScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeCourseObj, setActiveCourseObj] = useState<any>(null);
   const lastAlertedId = useRef<string | null>(null);
-
+  const [transactionStatus, setTransactionStatus] = useState<{
+    text: string;
+    status: "success" | "error" | null;
+  } | null>(null);
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -78,6 +80,62 @@ export default function StudentKioskScreen() {
   }, [terminalCohort, schedule, currentTime]);
 
   // Verification Result
+  // const verification = useMemo(() => {
+  //   if (!studentIdInput)
+  //     return { text: "Enter ID to verify...", status: "default" };
+  //   if (!activeCourseObj)
+  //     return {
+  //       text: "Terminal Locked: No active session check-in window detected.",
+  //       status: "error",
+  //     };
+
+  //   const profile = students[studentIdInput];
+  //   if (profile) {
+  //     let profileCohort = String(profile.class || profile.cohort || "").trim();
+  //     const courseCohort = String(activeCourseObj.cohort || "");
+
+  //     // Standardize: If the student's record has a label (e.g. "SYM") instead of an ID ("3"),
+  //     // resolve it to the ID so it matches the session's cohort ID.
+  //     if (sysConfig.cohorts) {
+  //       const matchedEntry = Object.entries(sysConfig.cohorts).find(
+  //         ([id, label]) =>
+  //           String(label).toLowerCase() === profileCohort.toLowerCase(),
+  //       );
+  //       if (matchedEntry) {
+  //         profileCohort = matchedEntry[0];
+  //       }
+  //     }
+
+  //     const studentClassLabel =
+  //       sysConfig.cohorts[profileCohort] || profileCohort || "Unknown";
+  //     const sessionClassLabel =
+  //       sysConfig.cohorts[courseCohort] || courseCohort || "Unknown";
+
+  //     // Enforce strict class/cohort matching
+  //     if (profileCohort !== courseCohort) {
+  //       return {
+  //         text: `${profile.name} belongs to ${studentClassLabel} and cannot register for ${sessionClassLabel} sessions.`,
+  //         status: "error",
+  //       };
+  //     }
+
+  //     if (!isPaymentCurrent(studentIdInput)) {
+  //       const currentTerm = getCurrentTerm();
+  //       return {
+  //         text: `${profile.name} has not completed payment for ${currentTerm ? `Term ${currentTerm}` : "the current term"}. Attendance blocked.`,
+  //         status: "error",
+  //       };
+  //     }
+
+  //     return {
+  //       text: `Recognized Match: ${profile.name} [Class: ${sysConfig.cohorts[String(profileCohort)] || "Unknown"}]`,
+  //       status: "success",
+  //     };
+  //   }
+  //   return { text: "Student ID unknown in system register.", status: "error" };
+  // }, [studentIdInput, activeCourseObj, students, terminalCohort]);
+
+  // NEW
   const verification = useMemo(() => {
     if (!studentIdInput)
       return { text: "Enter ID to verify...", status: "default" };
@@ -92,31 +150,38 @@ export default function StudentKioskScreen() {
       let profileCohort = String(profile.class || profile.cohort || "").trim();
       const courseCohort = String(activeCourseObj.cohort || "");
 
-      // Standardize: If the student's record has a label (e.g. "SYM") instead of an ID ("3"),
-      // resolve it to the ID so it matches the session's cohort ID.
+      // 1. Resolve label to ID if needed
       if (sysConfig.cohorts) {
         const matchedEntry = Object.entries(sysConfig.cohorts).find(
           ([id, label]) =>
             String(label).toLowerCase() === profileCohort.toLowerCase(),
         );
-        if (matchedEntry) {
-          profileCohort = matchedEntry[0];
-        }
+        if (matchedEntry) profileCohort = matchedEntry[0];
       }
 
-      const studentClassLabel =
-        sysConfig.cohorts[profileCohort] || profileCohort || "Unknown";
-      const sessionClassLabel =
-        sysConfig.cohorts[courseCohort] || courseCohort || "Unknown";
+      // 2. Helper to get Year (S or F) and Track (M or E)
+      // Assuming cohorts are named like "SYM", "SYE", "FYM", "FYE"
+      const getYear = (cohortId: string) => {
+        const label = sysConfig.cohorts[cohortId] || cohortId;
+        return label.charAt(0).toUpperCase(); // 'S' or 'F'
+      };
 
-      // Enforce strict class/cohort matching
-      if (profileCohort !== courseCohort) {
+      const studentYear = getYear(profileCohort);
+      const sessionYear = getYear(courseCohort);
+
+      const studentClassLabel =
+        sysConfig.cohorts[profileCohort] || profileCohort;
+      const sessionClassLabel = sysConfig.cohorts[courseCohort] || courseCohort;
+
+      // 3. Logic: Match if Year is the same (S=S or F=F)
+      if (studentYear !== sessionYear) {
         return {
-          text: `${profile.name} belongs to ${studentClassLabel} and cannot register for ${sessionClassLabel} sessions.`,
+          text: `${profile.name} is in Year ${studentYear === "S" ? "2" : "1"} and cannot register for Year ${sessionYear === "S" ? "2" : "1"} sessions.`,
           status: "error",
         };
       }
 
+      // 4. Payment check remains the same
       if (!isPaymentCurrent(studentIdInput)) {
         const currentTerm = getCurrentTerm();
         return {
@@ -126,12 +191,12 @@ export default function StudentKioskScreen() {
       }
 
       return {
-        text: `Recognized Match: ${profile.name} [Class: ${sysConfig.cohorts[String(profileCohort)] || "Unknown"}]`,
+        text: `Recognized Match: ${profile.name} [Class: ${studentClassLabel}]`,
         status: "success",
       };
     }
     return { text: "Student ID unknown in system register.", status: "error" };
-  }, [studentIdInput, activeCourseObj, students, terminalCohort]);
+  }, [studentIdInput, activeCourseObj, students, terminalCohort, sysConfig]);
 
   // Payment Alert System
   useEffect(() => {
@@ -188,12 +253,23 @@ export default function StudentKioskScreen() {
       if (res?.success) {
         saveAllLogs([newLog, ...attendanceLogs]);
         setStudentIdInput("");
-        Alert.alert("Success", `Attendance logged for ${profile.name}`);
+
+        // Set the success message and clear it after 4 seconds
+        setTransactionStatus({
+          text: `Attendance logged for ${profile.name}`,
+          status: "success",
+        });
+        setTimeout(() => setTransactionStatus(null), 4000);
       } else {
-        Alert.alert("Error", res?.message || "Server error");
+        setTransactionStatus({
+          text: res?.message || "Server error",
+          status: "error",
+        });
+        setTimeout(() => setTransactionStatus(null), 4000);
       }
     } catch (e) {
-      Alert.alert("Error", "Connection failed");
+      setTransactionStatus({ text: "Connection failed", status: "error" });
+      setTimeout(() => setTransactionStatus(null), 4000);
     }
   };
 
@@ -335,20 +411,30 @@ export default function StudentKioskScreen() {
           </View>
 
           <Text
-            style={[styles.label, { fontSize: 10, color: Colors.textLighter }]}
+            style={[
+              styles.label,
+              { fontSize: 10, color: Colors.textLighter, marginTop: 10 },
+            ]}
           >
-            VERIFICATION STATUS
+            {transactionStatus ? "TRANSACTION RESULT" : "VERIFICATION STATUS"}
           </Text>
           <View
-            style={[styles.verifBox, styles[`verif_${verification.status}`]]}
+            style={[
+              styles.verifBox,
+              styles[
+                `verif_${transactionStatus ? transactionStatus.status : verification.status}`
+              ],
+            ]}
           >
             <Text
               style={[
                 styles.verifText,
-                styles[`verifText_${verification.status}`],
+                styles[
+                  `verifText_${transactionStatus ? transactionStatus.status : verification.status}`
+                ],
               ]}
             >
-              {verification.text}
+              {transactionStatus ? transactionStatus.text : verification.text}
             </Text>
           </View>
 

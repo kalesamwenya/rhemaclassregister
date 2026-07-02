@@ -1,7 +1,4 @@
-import axios, {
-  AxiosError,
-  InternalAxiosRequestConfig,
-} from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
 // Fallback API URL
 const fallbackURL = "http://attendance.rhemazambia.com";
@@ -38,20 +35,15 @@ api.interceptors.request.use(
 
     const fullUrl = `${config.baseURL ?? ""}${config.url ?? ""}`;
 
-    console.log(
-      `[API] ${config.method?.toUpperCase()} ${fullUrl}`
-    );
+    console.log(`[API] ${config.method?.toUpperCase()} ${fullUrl}`);
 
     return config;
   },
   (error) => {
-    console.log(
-      "[REQUEST ERROR]",
-      error?.message
-    );
+    console.log("[REQUEST ERROR]", error?.message);
 
     return Promise.reject(error);
-  }
+  },
 );
 
 /**
@@ -62,25 +54,15 @@ api.interceptors.response.use(
 
   (error: AxiosError<any>) => {
     if (error.response) {
-      console.log(
-        "[API ERROR]",
-        error.response.data ||
-          error.response.status
-      );
+      console.log("[API ERROR]", error.response.data || error.response.status);
     } else if (error.request) {
-      console.log(
-        "[NETWORK ERROR]",
-        "Server unreachable"
-      );
+      console.log("[NETWORK ERROR]", "Server unreachable");
     } else {
-      console.log(
-        "[UNKNOWN ERROR]",
-        error.message
-      );
+      console.log("[UNKNOWN ERROR]", error.message);
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

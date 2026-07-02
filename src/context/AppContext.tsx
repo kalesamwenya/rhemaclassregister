@@ -87,6 +87,8 @@ interface AppContextType {
   alertModalVisible: boolean;
   activeAlert: any | null;
   setAlertModalVisible: (visible: boolean) => void;
+  isAdmin: boolean;
+  setIsAdmin: (val: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -115,7 +117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [sysConfig, setSysConfig] = useState({
     themeMode: "light" as "light" | "dark" | "system",
-    primaryColor: "#3b82f6",
+    primaryColor: "#f6513b",
     textCustoms: {
       "lbl-gate-title": "Rhema Class Attendance",
       "lbl-gate-subtitle":
@@ -142,6 +144,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const colors = useMemo(() => {
     return getColors(resolvedTheme as any, sysConfig.primaryColor);
   }, [resolvedTheme, sysConfig.primaryColor]);
+  // Inside AppProvider
+  const [isAdmin, setIsAdmin] = useState(false); // Add this
 
   useEffect(() => {
     const load = async () => {
@@ -302,8 +306,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               (a: any) => !a.is_read && !prevUnreadIds.has(String(a.id)),
             );
 
-            // TRIGGER THE CUSTOM UI INSTEAD OF NATIVE ALERT
-            if (newUnreads.length > 0 && Platform.OS !== "web") {
+            // ADD THE ADMIN CHECK HERE
+            if (newUnreads.length > 0 && Platform.OS !== "web" && isAdmin) {
               setActiveAlert(newUnreads[0]);
               setAlertModalVisible(true);
             }
@@ -809,6 +813,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         alertModalVisible,
         activeAlert,
         setAlertModalVisible,
+        isAdmin,
+        setIsAdmin,
       }}
     >
       {children}

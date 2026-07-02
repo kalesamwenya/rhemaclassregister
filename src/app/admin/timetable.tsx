@@ -22,9 +22,7 @@ import {
   Alert,
   FlatList,
   Modal,
-  Platform,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -36,13 +34,17 @@ import Animated, {
   Layout,
   SlideInRight,
 } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Colors } from "../../constants/Theme";
 import { useAppContext } from "../../context/AppContext";
 
 import SplashScreen from "../../components/SplashScreen";
 
 export default function AdminTimetableScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const {
     schedule,
@@ -601,7 +603,13 @@ export default function AdminTimetableScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {isProcessing && <SplashScreen message="Updating schedule..." />}
-      <Animated.View entering={SlideInRight} style={styles.screenHeader}>
+      <Animated.View
+        entering={SlideInRight}
+        style={[
+          styles.screenHeader,
+          { paddingTop: insets.top + 16 }, // 16px adds the editorial "breathing room"
+        ]}
+      >
         <View style={styles.headerTitleRow}>
           <TouchableOpacity
             onPress={() => router.replace("/")}
@@ -1253,16 +1261,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 2 : 2,
-    paddingBottom: 50,
-    backgroundColor: "#fff",
+    paddingBottom: 16, // Increased for a taller, more luxurious header
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9", // Very light subtle border
   },
-  headerTitleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12, // Slightly wider gap for airiness
+  },
   screenTitle: {
     fontSize: 28,
-    fontWeight: "900",
+    fontWeight: "800", // 800 is often sharper than 900 for this font size
     color: "#0f172a",
-    letterSpacing: -0.5,
+    letterSpacing: -1, // Tighter letter spacing for that "magazine" header look
+    lineHeight: 34,
   },
   backBtn: {
     width: 40,
